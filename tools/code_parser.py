@@ -3,8 +3,7 @@ from __future__ import annotations
 import json
 import tomllib
 from pathlib import Path
-from typing import Any, Dict, List
-
+from typing import Any
 
 DEFAULT_IGNORED_DIRS = {
     ".git",
@@ -220,7 +219,12 @@ def _parse_package_json(content: str) -> list[str]:
         return []
 
     dependencies: list[str] = []
-    for section_name in ("dependencies", "devDependencies", "peerDependencies", "optionalDependencies"):
+    for section_name in (
+        "dependencies",
+        "devDependencies",
+        "peerDependencies",
+        "optionalDependencies",
+    ):
         section = data.get(section_name, {}) or {}
         for name, version in section.items():
             dependencies.append(f"{name}@{version}")
@@ -284,28 +288,47 @@ def _detect_frameworks(files_by_path: dict[str, str], repo_root: Path) -> list[s
         if name not in frameworks:
             frameworks.append(name)
 
-    if "fastapi" in requirements or "fastapi" in pyproject or "from fastapi" in lower_blob or "import fastapi" in lower_blob:
+    if (
+        "fastapi" in requirements
+        or "fastapi" in pyproject
+        or "from fastapi" in lower_blob
+        or "import fastapi" in lower_blob
+    ):
         add("FastAPI")
-    if "flask" in requirements or "flask" in pyproject or "from flask" in lower_blob or "import flask" in lower_blob:
+    if (
+        "flask" in requirements
+        or "flask" in pyproject
+        or "from flask" in lower_blob
+        or "import flask" in lower_blob
+    ):
         add("Flask")
     if "django" in requirements or "django" in pyproject or "manage.py" in lower_paths:
         add("Django")
 
-    if "react" in package_json or "react-dom" in package_json or "next" in package_json or any(
-        path in lower_paths for path in {"next.config.js", "next.config.mjs", "next.config.ts"}
+    if (
+        "react" in package_json
+        or "react-dom" in package_json
+        or "next" in package_json
+        or any(
+            path in lower_paths for path in {"next.config.js", "next.config.mjs", "next.config.ts"}
+        )
     ):
         add("React")
-    if "next" in package_json or any(path in lower_paths for path in {"next.config.js", "next.config.mjs", "next.config.ts"}):
+    if "next" in package_json or any(
+        path in lower_paths for path in {"next.config.js", "next.config.mjs", "next.config.ts"}
+    ):
         add("Next.js")
     if "express" in package_json:
         add("Express")
     if "@nestjs/core" in package_json:
         add("NestJS")
-    if any(token in package_json for token in ("\"vue\"", "@vue/", "vue-router", "nuxt")):
+    if any(token in package_json for token in ('"vue"', "@vue/", "vue-router", "nuxt")):
         add("Vue")
     if any(token in package_json for token in ("@angular/core", "@angular/cli", "angular")):
         add("Angular")
-    if "vite" in package_json or any(path in lower_paths for path in {"vite.config.js", "vite.config.ts", "vite.config.mjs"}):
+    if "vite" in package_json or any(
+        path in lower_paths for path in {"vite.config.js", "vite.config.ts", "vite.config.mjs"}
+    ):
         add("Vite")
     if cargo:
         add("Cargo")
@@ -399,7 +422,9 @@ def _build_generated_readme(project_map: dict[str, Any]) -> str:
         lines.extend(["", "## Folder Structure", ""])
         lines.extend(f"- {folder}" for folder in folder_hierarchy[:30])
 
-    lines.extend(["", "## Next Steps", "", "Add project-specific setup and usage instructions here."])
+    lines.extend(
+        ["", "## Next Steps", "", "Add project-specific setup and usage instructions here."]
+    )
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -407,7 +432,7 @@ def build_project_map(
     repo_path: str | Path,
     allowed_extensions: set[str] | None = None,
     ignored_dirs: set[str] | None = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Build a structured project map while still collecting file contents."""
     repo_root = Path(repo_path)
     extensions = allowed_extensions or DEFAULT_ALLOWED_EXTENSIONS
@@ -461,24 +486,30 @@ def build_project_map(
     entry_points = _detect_entry_points(list(ordered_files.keys()), repo_root)
     folder_hierarchy = _scan_folder_hierarchy(repo_root, ignored)
     has_root_readme = any(path.lower() == "readme.md" for path in files_by_path)
-    generated_readme = None if has_root_readme else _build_generated_readme(
-        {
-            "repo_root": str(repo_root),
-            "languages": languages,
-            "frameworks": frameworks,
-            "dependencies": dependency_summary,
-            "entry_points": entry_points,
-            "folder_hierarchy": folder_hierarchy,
-        }
+    generated_readme = (
+        None
+        if has_root_readme
+        else _build_generated_readme(
+            {
+                "repo_root": str(repo_root),
+                "languages": languages,
+                "frameworks": frameworks,
+                "dependencies": dependency_summary,
+                "entry_points": entry_points,
+                "folder_hierarchy": folder_hierarchy,
+            }
+        )
     )
 
-    project_map: Dict[str, Any] = {
+    project_map: dict[str, Any] = {
         "repo_root": str(repo_root),
         "languages": languages,
         "frameworks": frameworks,
         "dependency_files": sorted(set(dependency_files)),
         "dependencies": dependency_summary,
-        "important_files": sorted(set(important_files), key=lambda item: (_file_priority(item), item)),
+        "important_files": sorted(
+            set(important_files), key=lambda item: (_file_priority(item), item)
+        ),
         "entry_points": entry_points,
         "folder_hierarchy": folder_hierarchy,
         "ignored_folders": sorted(set(ignored)),
@@ -494,7 +525,7 @@ def parse_repository(
     allowed_extensions: set[str] | None = None,
     ignored_dirs: set[str] | None = None,
     structured: bool = False,
-) -> Dict[str, str] | Dict[str, Any]:
+) -> dict[str, str] | dict[str, Any]:
     """Parse a repository.
 
     By default this keeps the original flat mapping of file path to file content.
@@ -512,7 +543,7 @@ def list_repository_files(
     repo_path: str | Path,
     allowed_extensions: set[str] | None = None,
     ignored_dirs: set[str] | None = None,
-) -> List[str]:
+) -> list[str]:
     """Return a sorted list of repository files that match the filters."""
     parsed_files = parse_repository(
         repo_path=repo_path,
@@ -522,7 +553,7 @@ def list_repository_files(
     return sorted(parsed_files.keys())
 
 
-def summarize_project_map(project_map: Dict[str, Any]) -> str:
+def summarize_project_map(project_map: dict[str, Any]) -> str:
     """Return a compact text summary for planner prompts."""
     lines = [
         f"Repository root: {project_map.get('repo_root', '(unknown)')}",
@@ -538,6 +569,6 @@ def summarize_project_map(project_map: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def get_project_readme(project_map: Dict[str, Any]) -> str | None:
+def get_project_readme(project_map: dict[str, Any]) -> str | None:
     """Return generated README content when the repository does not ship one."""
     return project_map.get("generated_readme")

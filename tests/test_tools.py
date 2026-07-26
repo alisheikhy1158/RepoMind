@@ -2,14 +2,15 @@ from unittest.mock import MagicMock, patch
 
 from tools.code_parser import build_project_map, get_project_readme, parse_repository
 from tools.diff_generator import generate_diff
-from tools.pr_tool import build_pr_title, build_pr_body
 from tools.github_tool import commit_changes
+from tools.pr_tool import build_pr_body, build_pr_title
+
 
 def test_code_parser_ignores_hidden_dirs(tmp_path):
     """Test that the parser reads valid files and skips ignored folders like .git"""
     # 1. Create a fake folder structure using pytest's built-in tmp_path feature
     (tmp_path / "main.py").write_text("print('hello')", encoding="utf-8")
-    
+
     # 2. Create an ignored directory and a parsable file inside it
     git_dir = tmp_path / ".git"
     git_dir.mkdir()
@@ -56,7 +57,9 @@ def test_project_map_important_files_are_ordered_by_priority(tmp_path):
     (tmp_path / "Dockerfile").write_text("FROM python:3.12", encoding="utf-8")
     (tmp_path / "ARCHITECTURE.md").write_text("Architecture", encoding="utf-8")
     (tmp_path / "README.md").write_text("# Project", encoding="utf-8")
-    (tmp_path / "package.json").write_text("{\"dependencies\":{\"express\":\"^4.0.0\"}}", encoding="utf-8")
+    (tmp_path / "package.json").write_text(
+        '{"dependencies":{"express":"^4.0.0"}}', encoding="utf-8"
+    )
 
     project_map = build_project_map(tmp_path)
 
@@ -83,7 +86,9 @@ def test_dependency_detection_supports_nested_dependency_files(tmp_path):
     """Dependency parsing should include files beyond repository root for monorepos."""
     (tmp_path / "services").mkdir()
     (tmp_path / "services" / "api").mkdir(parents=True)
-    (tmp_path / "services" / "api" / "requirements.txt").write_text("flask>=3.0.0", encoding="utf-8")
+    (tmp_path / "services" / "api" / "requirements.txt").write_text(
+        "flask>=3.0.0", encoding="utf-8"
+    )
     (tmp_path / "frontend").mkdir()
     (tmp_path / "frontend" / "package.json").write_text(
         '{"dependencies":{"react":"^19.0.0"}}',
@@ -132,6 +137,7 @@ def test_project_map_does_not_generate_readme_when_root_readme_exists(tmp_path):
     project_map = build_project_map(tmp_path)
     assert get_project_readme(project_map) is None
 
+
 def test_diff_generator_creates_valid_diff():
     """Test that difflib correctly identifies line changes."""
     old_code = "def hello():\n    print('world')"
@@ -150,23 +156,23 @@ def test_pr_tool_formats_text_correctly():
     assert title == "feat: Add a new login feature"
 
     body = build_pr_body(
-        instruction="Add a new login feature",
-        changed_files=["main.py", "auth.py"]
+        instruction="Add a new login feature", changed_files=["main.py", "auth.py"]
     )
 
     assert "Add a new login feature" in body
     assert "- `main.py`" in body
     assert "- `auth.py`" in body
 
+
 def test_github_tool_commit_changes():
     """Test the github commit function using a fake (mocked) repository."""
     # 1. Create a fake Git repository so we don't accidentally edit real files
     mock_repo = MagicMock()
-    mock_repo.is_dirty.return_value = True # Pretend there are changes to commit
+    mock_repo.is_dirty.return_value = True  # Pretend there are changes to commit
     mock_repo.index.commit.return_value.hexsha = "12345abcde"
 
     # 2. Patch the stage_all_changes function so it skips running 'git add'
-    with patch('tools.github_tool.stage_all_changes'):
+    with patch("tools.github_tool.stage_all_changes"):
         commit_hash = commit_changes(mock_repo, "My test commit")
 
     # 3. Verify the tool tried to commit our message and returned the fake hash

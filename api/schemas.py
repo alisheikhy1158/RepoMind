@@ -1,11 +1,11 @@
+from enum import StrEnum
+
 from pydantic import BaseModel
-from typing import Optional
-from enum import Enum
 
 # ── Enums ────────────────────────────────────────────────────────────────────
 
 
-class JobStatus(str, Enum):
+class JobStatus(StrEnum):
     queued = "queued"
     running = "running"
     completed = "completed"
@@ -48,13 +48,13 @@ class JobStatusResponse(BaseModel):
 
     job_id: str
     status: JobStatus
-    pr_url: Optional[str] = (
+    pr_url: str | None = (
         None  # GitHub PR URL — only set when status = completed AND a real PR was created
     )
-    diff_summary: Optional[str] = None  # e.g. "Modified 3 files"
-    error_message: Optional[str] = None  # Set when status = failed
+    diff_summary: str | None = None  # e.g. "Modified 3 files"
+    error_message: str | None = None  # Set when status = failed
     # Keep 'message' as an alias so existing callers don't break
-    message: Optional[str] = None
+    message: str | None = None
 
 
 class RunResponse(BaseModel):
@@ -73,7 +73,7 @@ class RefineResponse(BaseModel):
 
     job_id: str
     status: JobStatus
-    message: Optional[str] = None
+    message: str | None = None
 
 
 # ── Internal Models ───────────────────────────────────────────────────────────
