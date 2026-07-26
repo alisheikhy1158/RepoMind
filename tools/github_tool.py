@@ -13,9 +13,9 @@ New in this version:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
-from git import Repo, GitCommandError
+from git import GitCommandError, Repo
 
 if TYPE_CHECKING:
     from agent.executor import FileChange
@@ -81,7 +81,7 @@ def stage_all_changes(repo: Repo) -> None:
 
 def write_file_changes(
     repo_path: Path,
-    file_changes: list["FileChange"],
+    file_changes: list[FileChange],
 ) -> list[str]:
     """
     Write a list of FileChange objects to the local clone on disk.
@@ -125,8 +125,8 @@ def format_commit_message(message: str, commit_type: str = "feat") -> str:
 def commit_changes(
     repo: Repo,
     message: str,
-    commit_type: Optional[str] = None,
-) -> Optional[str]:
+    commit_type: str | None = None,
+) -> str | None:
     """
     Stage all changes and commit them.
 
@@ -153,7 +153,7 @@ def commit_changes(
 def push_branch(
     repo: Repo,
     remote_name: str = "origin",
-    branch_name: Optional[str] = None,
+    branch_name: str | None = None,
 ) -> None:
     """
     Push the current (or specified) branch to the remote.
