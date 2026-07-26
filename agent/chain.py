@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import SystemMessage
 
+from agent.executor import ExecutorOutput, StepExecutor, ToolSpec
 from agent.memory import MemoryManager
-from agent.planner import TaskPlanner, Plan
-from agent.executor import StepExecutor, ExecutorOutput, ToolSpec, FileChange
+from agent.planner import Plan, TaskPlanner
 from prompts.system_prompt import SYSTEM_PROMPT
 
 
@@ -38,7 +38,7 @@ class AgentChain:
     def __init__(
         self,
         llm: BaseChatModel,
-        tools: List[ToolSpec],
+        tools: list[ToolSpec],
         memory: MemoryManager | None = None,
     ) -> None:
         self.llm = llm
@@ -69,7 +69,7 @@ class AgentChain:
         self,
         session_id: str,
         instruction: str,
-        project_map: Dict[str, Any] | None = None,
+        project_map: dict[str, Any] | None = None,
     ) -> ChainResult:
         """Execute one full agent turn while supplying structured repository intelligence."""
         self.memory.append_user_message(session_id, instruction)

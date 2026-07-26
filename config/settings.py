@@ -11,7 +11,6 @@ error if neither is set.
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Optional
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings
@@ -19,19 +18,19 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # ── LLM — Groq (primary, free, fast) ─────────────────────────────────────
-    groq_api_key: Optional[str] = None
+    groq_api_key: str | None = None
     llm_model: str = "llama-3.3-70b-versatile"
 
     # ── LLM — OpenAI (optional fallback) ─────────────────────────────────────
-    openai_api_key: Optional[str] = None
+    openai_api_key: str | None = None
     openai_model: str = "gpt-4o"
 
     # ── Plan limits ───────────────────────────────────────────────────────────
     max_plan_steps: int = 10
 
     # ── GitHub ────────────────────────────────────────────────────────────────
-    github_token: str
-    github_username: str
+    github_token: str = ""
+    github_username: str = ""
 
     # ── App ───────────────────────────────────────────────────────────────────
     app_env: str = "development"
@@ -42,7 +41,7 @@ class Settings(BaseSettings):
         extra = "ignore"
 
     @model_validator(mode="after")
-    def at_least_one_llm_key(self) -> "Settings":
+    def at_least_one_llm_key(self) -> Settings:
         """Fail fast at startup if no LLM backend is configured."""
         if not self.groq_api_key and not self.openai_api_key:
             raise ValueError("At least one LLM API key must be set: GROQ_API_KEY or OPENAI_API_KEY")

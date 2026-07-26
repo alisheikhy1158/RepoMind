@@ -1,8 +1,9 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from api.routes import router
+
 from api.errors import register_error_handlers
+from api.routes import router
 
 # ── App Initialization ────────────────────────────────────────────────────────
 
@@ -23,13 +24,14 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],        # Lock this down to the platform domain in production
+    allow_origins=["*"],  # Lock this down to the platform domain in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # ── Global Error Handler ──────────────────────────────────────────────────────
+
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -38,11 +40,13 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={"status": "failed", "message": str(exc)},
     )
 
+
 # ── Routers ───────────────────────────────────────────────────────────────────
 register_error_handlers(app)
 app.include_router(router)
 
 # ── Health Endpoints ──────────────────────────────────────────────────────────
+
 
 @app.get("/", tags=["Health"])
 async def root():

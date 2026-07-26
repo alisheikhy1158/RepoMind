@@ -8,7 +8,7 @@ to understand, review, and merge the PR without reading the raw diffs.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 # ── Template ──────────────────────────────────────────────────────────────────
 # Sections:
@@ -147,5 +147,5 @@ def build_pr_description(
         reason=reason.strip() or "Instruction provided by user through HackingTheRepo platform.",
         changed_files=_format_changed_files(changed_files, file_reasons),
         diff_preview=_format_diff_preview(diff_summary),
-        timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
+        timestamp=datetime.now(UTC).strftime("%Y-%m-%d %H:%M"),
     )
