@@ -3,6 +3,7 @@ Name: repomind
 Version: 1.0.0
 Summary: AI agent that understands, plans, and rewrites code repositories on demand
 Requires-Python: >=3.11
+License-File: LICENSE
 Requires-Dist: fastapi>=0.115.0
 Requires-Dist: uvicorn[standard]>=0.30.6
 Requires-Dist: pydantic>=2.8.2
@@ -24,3 +25,4 @@ Requires-Dist: pytest-cov>=7.1.0; extra == "dev"
 Requires-Dist: black>=24.8.0; extra == "dev"
 Requires-Dist: ruff>=0.6.0; extra == "dev"
 Requires-Dist: mypy>=1.11.0; extra == "dev"
+Dynamic: license-file
