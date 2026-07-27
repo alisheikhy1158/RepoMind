@@ -2,18 +2,19 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
-from pydantic import BaseModel, Field
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.prompts import ChatPromptTemplate
+from pydantic import BaseModel, Field
 
 from agent.planner import Plan, PlanStep
 
 logger = logging.getLogger(__name__)
 
-ToolFn = Callable[[Dict[str, Any]], Dict[str, Any]]
+ToolFn = Callable[[dict[str, Any]], dict[str, Any]]
 
 
 class FileChange(BaseModel):
@@ -36,9 +37,9 @@ class FileChange(BaseModel):
 class StepExecutionResult(BaseModel):
     step_id: int
     step_task: str
-    tool_name: Optional[str] = None
-    tool_input: Dict[str, Any] = Field(default_factory=dict)
-    file_changes: List[FileChange] = Field(default_factory=list)
+    tool_name: str | None = None
+    tool_input: dict[str, Any] = Field(default_factory=dict)
+    file_changes: list[FileChange] = Field(default_factory=list)
     notes: str = ""
     retried: bool = Field(
         default=False, description="True if this step was retried due to empty file_changes."
@@ -46,13 +47,13 @@ class StepExecutionResult(BaseModel):
 
 
 class ExecutorOutput(BaseModel):
-    results: List[StepExecutionResult] = Field(default_factory=list)
-    all_file_changes: List[FileChange] = Field(default_factory=list)
+    results: list[StepExecutionResult] = Field(default_factory=list)
+    all_file_changes: list[FileChange] = Field(default_factory=list)
 
 
 class ToolDecision(BaseModel):
     tool_name: str = Field(..., description="Which tool to call.")
-    tool_input: Dict[str, Any] = Field(
+    tool_input: dict[str, Any] = Field(
         default_factory=dict, description="Arguments for the selected tool."
     )
 
@@ -75,9 +76,10 @@ class StepExecutor:
       has enough context to generate real, working code changes.
     """
 
-    def __init__(self, llm: BaseChatModel, tools: List[ToolSpec]) -> None:
+    def __init__(self, llm: BaseChatModel, tools: list[ToolSpec]) -> None:
         self.llm = llm
         self.tools_by_name = {t.name: t for t in tools}
+        self.memory_context: list | None = None
 
         tool_descriptions = (
             "\n".join([f"- {t.name}: {t.description}" for t in tools]) or "- noop: do nothing"
@@ -170,21 +172,24 @@ class StepExecutor:
     def _decide_tool(self, step: PlanStep, previous_summary: str) -> ToolDecision:
         """Ask the LLM which tool to call for this step."""
         chain = self.tool_prompt | self.llm.with_structured_output(ToolDecision)
-        return chain.invoke(
+        decision = chain.invoke(
             {
                 "tool_descriptions": self.tool_descriptions,
                 "step": json.dumps(step.model_dump(), indent=2),
                 "previous_summary": previous_summary or "(none)",
             }
         )
+        if isinstance(decision, ToolDecision):
+            return decision
+        return ToolDecision.model_validate(decision)
 
-    def _run_tool(self, tool: ToolSpec, tool_input: Dict[str, Any]) -> dict:
+    def _run_tool(self, tool: ToolSpec, tool_input: dict[str, Any]) -> dict:
         """Call a tool function and return its payload dict."""
         return tool.fn(tool_input) or {}
 
-    def _extract_file_changes(self, payload: dict, step_id: int) -> List[FileChange]:
+    def _extract_file_changes(self, payload: dict, step_id: int) -> list[FileChange]:
         """Parse file_changes from a tool payload into FileChange objects."""
-        changes: List[FileChange] = []
+        changes: list[FileChange] = []
         for c in payload.get("file_changes", []):
             # Guard: reject changes where updated_content looks like a snippet/diff
             content = c.get("updated_content", "")
@@ -214,8 +219,8 @@ class StepExecutor:
         the executor moves on to the next step.  The retry is logged so it is
         visible in the job summary.
         """
-        results: List[StepExecutionResult] = []
-        all_changes: List[FileChange] = []
+        results: list[StepExecutionResult] = []
+        all_changes: list[FileChange] = []
 
         for step in plan.steps:
             previous_summary = "\n".join([f"Step {r.step_id}: {r.notes}" for r in results])

@@ -24,8 +24,8 @@ class Settings(BaseSettings):
     max_plan_steps: int = 10
 
     # ── GitHub ────────────────────────────────────────────────────────────────
-    github_token: str
-    github_username: str
+    github_token: str = ""
+    github_username: str = ""
 
     # ── App ───────────────────────────────────────────────────────────────────
     app_env: str = "development"

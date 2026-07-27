@@ -1,20 +1,25 @@
+from unittest.mock import patch
+
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock
 from pydantic import ValidationError
 
+from api.errors import JobNotFoundError
 from api.main import app
-from api.schemas import RunRequest, JobStatus
+from api.schemas import JobStatus, RunRequest
 from utils.job_manager import job_manager
 
 # This TestClient uses httpx under the hood to fake web requests!
 client = TestClient(app)
 
+
 def test_pydantic_models():
     """Test Ali's Pydantic schemas validation."""
-    
+
     # 1. Valid RunRequest
-    req = RunRequest(repo_url="https://github.com/QuantumLogicsLabs/RepoMind", instruction="Fix bugs")
+    req = RunRequest(
+        repo_url="https://github.com/QuantumLogicsLabs/RepoMind", instruction="Fix bugs"
+    )
     assert req.branch_name == "repomind/auto-fix"  # Tests the default value
 
     # 2. Invalid RunRequest (missing instruction field)
@@ -40,22 +45,22 @@ def test_job_manager_lifecycle():
     assert updated_job.pr_url == "https://github.com/fake/pull/1"
 
     # 4. Not Found Exception
-    with pytest.raises(Exception):
+    with pytest.raises(JobNotFoundError):
         job_manager.get("this_job_does_not_exist")
 
 
 @patch("api.routes.run_agent")
 def test_api_endpoints_integration(mock_run_agent):
     mock_run_agent.return_value = {"pr_url": "https://github.com/fake/pull/2", "summary": "Done"}
-   
+
     # 1. Test POST /run
     run_payload = {
         "repo_url": "https://github.com/QuantumLogicsLabs/RepoMind",
-        "instruction": "Test run"
+        "instruction": "Test run",
     }
     run_resp = client.post("/run", json=run_payload)
     assert run_resp.status_code == 200
-    
+
     job_id = run_resp.json()["job_id"]
     assert run_resp.json()["status"] == "queued"
 
@@ -65,10 +70,7 @@ def test_api_endpoints_integration(mock_run_agent):
     assert status_resp.json()["status"] in ["queued", "running", "completed"]
 
     # 3. Test POST /refine
-    refine_payload = {
-        "job_id": job_id,
-        "instruction": "Make it better"
-    }
+    refine_payload = {"job_id": job_id, "instruction": "Make it better"}
     refine_resp = client.post("/refine", json=refine_payload)
     assert refine_resp.status_code == 200
     assert refine_resp.json()["job_id"] == job_id
@@ -79,7 +81,9 @@ def test_api_error_handling():
     Test what happens when users send bad data.
     """
     # Test Invalid GitHub URL (Should return 400 Bad Request)
-    bad_url_resp = client.post("/run", json={"repo_url": "https://gitlab.com/test", "instruction": "test"})
+    bad_url_resp = client.post(
+        "/run", json={"repo_url": "https://gitlab.com/test", "instruction": "test"}
+    )
     assert bad_url_resp.status_code == 400
 
     # Test Job Not Found (Should return 404 Not Found)

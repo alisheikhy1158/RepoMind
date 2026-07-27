@@ -15,7 +15,7 @@ Improvements over the original:
 from __future__ import annotations
 
 import re
-from typing import Dict, Iterable, Optional
+from collections.abc import Iterable
 
 from github import Github
 from github.PullRequest import PullRequest
@@ -129,8 +129,8 @@ def build_pr_title(instruction: str, fallback: str = "chore: automated repositor
 def build_pr_body(
     instruction: str,
     changed_files: Iterable[str],
-    diff_summary: Optional[Dict[str, str]] = None,
-    file_reasons: Optional[list[str]] = None,
+    diff_summary: dict[str, str] | None = None,
+    file_reasons: list[str] | None = None,
 ) -> str:
     """
     Build a complete, reviewer-friendly PR body.
