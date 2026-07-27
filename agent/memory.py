@@ -45,10 +45,32 @@ class MemoryManager:
 
     def mark_step_completed(self, session_id: str, step: str) -> None:
         state = self.get_or_create(session_id)
-        state.completed_steps.append(step)
+        if step not in state.completed_steps:
+            state.completed_steps.append(step)
 
-    def get_context_messages(self, session_id: str, max_messages: Optional[int] = 12) -> List[BaseMessage]:
+    def get_progress(self, session_id: str) -> dict:
+        state = self.get_or_create(session_id)
+        total = len(state.last_plan)
+
+        return {
+            "completed": len(state.completed_steps),
+            "total": total,
+            "steps": state.completed_steps,
+            "remaining": max(total - len(state.completed_steps), 0),
+        }
+
+    def clear_session(self, session_id: str) -> None:
+        if session_id in self._sessions:
+            del self._sessions[session_id]
+
+    def get_context_messages(
+        self,
+        session_id: str,
+        max_messages: Optional[int] = 12,
+    ) -> List[BaseMessage]:
         messages = self.get_history(session_id).messages
+
         if max_messages is None or len(messages) <= max_messages:
             return messages
+
         return messages[-max_messages:]

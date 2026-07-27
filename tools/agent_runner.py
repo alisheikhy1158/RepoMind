@@ -226,12 +226,26 @@ def run_agent(
 
         # 4. Run AgentChain
         logger.info("Running AgentChain for session %s", session_id)
+
+        _memory.append_user_message(session_id, instruction)
+
         chain = AgentChain(llm=llm, tools=tools, memory=_memory)
+
         result = chain.run_with_project_map(
             session_id=session_id,
             instruction=enriched_instruction,
             project_map=project_map,
         )
+
+        _memory.append_ai_message(
+            session_id,
+            "Agent completed the requested task successfully."
+        )
+
+        if hasattr(result.execution, "steps"):
+            _memory.set_plan(session_id, result.execution.steps)
+            for step in result.execution.steps:
+                _memory.mark_step_completed(session_id, step)
 
         if not result.execution.all_file_changes and not readme_generated:
             logger.warning("Agent produced no file changes for session %s", session_id)
