@@ -4,25 +4,27 @@ FastAPI Routes for RepoMind Agent System
 
 import traceback
 from urllib.parse import urlparse
+
 from fastapi import APIRouter, BackgroundTasks
+
+from api.errors import (
+    InvalidInstructionError,
+    InvalidRepoURLError,
+    JobAlreadyRunningError,
+    JobNotFoundError,
+)
 from api.schemas import (
-    RunRequest,
-    RunResponse,
+    JobStatus,
     JobStatusResponse,
     RefineRequest,
     RefineResponse,
-    JobStatus,
-)
-from utils.job_manager import job_manager
-from api.errors import (
-    InvalidRepoURLError,
-    InvalidInstructionError,
-    JobAlreadyRunningError,
-    JobNotFoundError,
+    RunRequest,
+    RunResponse,
 )
 
 # ── Real agent runner (replaces the old stub test_executor) ───────────────────
 from tools.agent_runner import run_agent
+from utils.job_manager import job_manager
 
 router = APIRouter(tags=["Agent"])
 
@@ -94,10 +96,10 @@ async def status(job_id: str) -> JobStatusResponse:
     try:
         job = job_manager.get(job_id)
     except Exception:
-        raise JobNotFoundError(job_id)
+        raise JobNotFoundError(job_id) from None
     return JobStatusResponse(
         job_id=job.job_id,
-        status=job.status,
+        status=JobStatus(job.status),
         pr_url=job.pr_url,
         diff_summary=job.diff_summary,
         error_message=job.error_message,
@@ -115,7 +117,7 @@ async def refine(request: RefineRequest, background_tasks: BackgroundTasks) -> R
     try:
         job = job_manager.get(request.job_id)
     except Exception:
-        raise JobNotFoundError(request.job_id)
+        raise JobNotFoundError(request.job_id) from None
     if job.status == JobStatus.running:
         raise JobAlreadyRunningError(request.job_id)
     if not request.instruction.strip():

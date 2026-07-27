@@ -18,25 +18,24 @@ from __future__ import annotations
 import logging
 import tempfile
 from pathlib import Path
-from typing import Optional
 
-from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_groq import ChatGroq
+from pydantic import SecretStr
 
 from agent.chain import AgentChain
 from agent.executor import ToolSpec
 from agent.memory import MemoryManager
 from config.settings import get_settings
-from tools.code_parser import parse_repository
-from tools.code_parser import build_project_map, get_project_readme
+from tools.code_parser import build_project_map, get_project_readme, parse_repository
 from tools.diff_generator import generate_repo_diff
 from tools.github_tool import (
     clone_repository,
-    create_branch,
     commit_changes,
+    create_branch,
     push_branch,
 )
-from tools.pr_tool import build_pr_title, build_pr_body, create_pull_request
+from tools.pr_tool import build_pr_body, build_pr_title, create_pull_request
 
 logger = logging.getLogger(__name__)
 
@@ -60,67 +59,86 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str]) -> list[ToolSpec]:
 
         applied: list[dict] = []
         for change in raw_changes:
-            filename: str = change.get("filename", "")
-            updated_content: str = change.get("updated_content", "")
-            reason: str = change.get("reason", "Agent change")
+            change_filename = change.get("filename", "")
+            updated_content = change.get("updated_content", "")
+            change_reason = change.get("reason", "Agent change")
 
-            if not filename or not updated_content.strip():
+            if not change_filename or not updated_content.strip():
                 logger.warning("code_editor: skipping change with empty filename or content.")
                 continue
 
             placeholder_signals = [
-                "TODO", "Add content here", "Add updated content",
-                "update this with", "add your", "insert here"
+                "TODO",
+                "Add content here",
+                "Add updated content",
+                "update this with",
+                "add your",
+                "insert here",
             ]
             is_placeholder = any(
-                signal.lower() in updated_content.lower()
-                for signal in placeholder_signals
+                signal.lower() in updated_content.lower() for signal in placeholder_signals
             )
 
             if is_placeholder or len(updated_content.strip()) < 50:
                 logger.info(
                     "code_editor: placeholder detected for %s — generating real content with LLM.",
-                    filename
+                    change_filename,
                 )
-                target = repo_path / filename
+                target = repo_path / change_filename
                 current_content = target.read_text(encoding="utf-8") if target.exists() else ""
 
                 settings = get_settings()
                 gen_llm = ChatGroq(
                     model=settings.llm_model,
-                    api_key=settings.groq_api_key,
-                    temperature=0
+                    api_key=SecretStr(settings.groq_api_key) if settings.groq_api_key else None,
+                    temperature=0,
                 )
 
-                gen_prompt = ChatPromptTemplate.from_messages([
-                    ("system", (
-                        "You are an expert Python developer. "
-                        "You will be given the COMPLETE content of a Python file. "
-                        "Your job is to modify it according to the instruction and return the COMPLETE updated file. "
-                        "STRICT RULES: "
-                        "1. Return the COMPLETE file — every single line, nothing omitted. "
-                        "2. NEVER write TODO comments or placeholders. "
-                        "3. Write REAL working Python code only. "
-                        "4. If adding docstrings, write the actual meaningful description of what the function does. "
-                        "5. If adding type hints, use real Python types like str, int, float, list, dict, bool, Optional. "
-                        "6. No markdown fences, just raw Python code. "
-                        "7. Copy all unchanged lines exactly as they are."
-                    )),
-                    ("human", (
-                        "File: {filename}\n\n"
-                        "Current content:\n---\n{current_content}\n---\n\n"
-                        "Instruction: {instruction}\n\n"
-                        "Return the complete updated file content only. No explanations."
-                    ))
-                ])
+                gen_prompt = ChatPromptTemplate.from_messages(
+                    [
+                        (
+                            "system",
+                            (
+                                "You are an expert Python developer. "
+                                "You will be given the COMPLETE content of a Python file. "
+                                "Your job is to modify it according to the instruction and return the COMPLETE updated file. "
+                                "STRICT RULES: "
+                                "1. Return the COMPLETE file — every single line, nothing omitted. "
+                                "2. NEVER write TODO comments or placeholders. "
+                                "3. Write REAL working Python code only. "
+                                "4. If adding docstrings, write the actual meaningful description of what the function does. "
+                                "5. If adding type hints, use real Python types like str, int, float, list, dict, bool, Optional. "
+                                "6. No markdown fences, just raw Python code. "
+                                "7. Copy all unchanged lines exactly as they are."
+                            ),
+                        ),
+                        (
+                            "human",
+                            (
+                                "File: {filename}\n\n"
+                                "Current content:\n---\n{current_content}\n---\n\n"
+                                "Instruction: {instruction}\n\n"
+                                "Return the complete updated file content only. No explanations."
+                            ),
+                        ),
+                    ]
+                )
 
                 chain = gen_prompt | gen_llm
-                response = chain.invoke({
-                    "filename": filename,
-                    "current_content": current_content or "# Empty file",
-                    "instruction": reason or "Add docstrings and type hints to all functions"
-                })
-                updated_content = response.content.strip()
+                response = chain.invoke(
+                    {
+                        "filename": change_filename,
+                        "current_content": current_content or "# Empty file",
+                        "instruction": change_reason
+                        or "Add docstrings and type hints to all functions",
+                    }
+                )
+                raw_content = response.content
+                updated_content = (
+                    raw_content.strip()
+                    if isinstance(raw_content, str)
+                    else str(raw_content).strip()
+                )
 
                 if updated_content.startswith("```"):
                     lines = updated_content.split("\n")
@@ -128,15 +146,17 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str]) -> list[ToolSpec]:
                         lines[1:-1] if lines[-1].strip() == "```" else lines[1:]
                     )
 
-            target = repo_path / filename
+            target = repo_path / change_filename
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(updated_content, encoding="utf-8")
-            logger.info("code_editor: wrote %s (%d bytes)", filename, len(updated_content))
-            applied.append({
-                "filename": filename,
-                "updated_content": updated_content,
-                "reason": reason
-            })
+            logger.info("code_editor: wrote %s (%d bytes)", change_filename, len(updated_content))
+            applied.append(
+                {
+                    "filename": change_filename,
+                    "updated_content": updated_content,
+                    "reason": change_reason,
+                }
+            )
 
         notes = (
             f"Wrote {len(applied)} file(s): {[c['filename'] for c in applied]}"
@@ -165,7 +185,7 @@ def run_agent(
     instruction: str,
     session_id: str,
     branch_name: str = "repomind/auto-fix",
-    pr_title_override: Optional[str] = None,
+    pr_title_override: str | None = None,
     base_branch: str = "main",
 ) -> dict:
     """
@@ -219,7 +239,7 @@ def run_agent(
         # 3. Build LLM + tools
         llm = ChatGroq(
             model=settings.llm_model,
-            api_key=settings.groq_api_key,
+            api_key=SecretStr(settings.groq_api_key) if settings.groq_api_key else None,
             temperature=0,
         )
         tools = _build_tools(repo_path, repo_files_for_agent)

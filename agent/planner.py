@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from typing import Any, List, Optional
+from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import Runnable
-from langchain_core.language_models.chat_models import BaseChatModel
+from pydantic import BaseModel, Field, field_validator
 
 from tools.code_parser import summarize_project_map
 
@@ -15,7 +15,7 @@ MAX_PLAN_STEPS = 10
 class PlanStep(BaseModel):
     id: int = Field(..., description="1-based sequence number.")
     task: str = Field(..., description="Single actionable edit task.")
-    target_files: List[str] = Field(
+    target_files: list[str] = Field(
         default_factory=list,
         description=(
             "Exact relative file paths to edit, e.g. ['agent/executor.py']. "
@@ -55,11 +55,11 @@ class PlanStep(BaseModel):
 
 
 class Plan(BaseModel):
-    steps: List[PlanStep] = Field(default_factory=list)
+    steps: list[PlanStep] = Field(default_factory=list)
 
     @field_validator("steps")
     @classmethod
-    def cap_steps(cls, steps: List[PlanStep]) -> List[PlanStep]:
+    def cap_steps(cls, steps: list[PlanStep]) -> list[PlanStep]:
         """Hard cap: never more than MAX_PLAN_STEPS steps to prevent infinite loops."""
         if len(steps) > MAX_PLAN_STEPS:
             steps = steps[:MAX_PLAN_STEPS]
@@ -139,7 +139,7 @@ class TaskPlanner:
             lines.append(f"{role}: {msg.content}")
         return "\n".join(lines)
 
-    def _project_map_to_text(self, project_map: Optional[dict[str, Any]]) -> str:
+    def _project_map_to_text(self, project_map: dict[str, Any] | None) -> str:
         """Serialize the structured project map for the planner prompt."""
         if not project_map:
             return "(no project map available)"
@@ -153,7 +153,7 @@ class TaskPlanner:
         self,
         instruction: str,
         context_messages: list,
-        project_map: Optional[dict[str, Any]] = None,
+        project_map: dict[str, Any] | None = None,
     ) -> Plan:
         """
         Produce a Plan from the user's instruction and session context.
