@@ -26,8 +26,14 @@ from pydantic import SecretStr
 from agent.chain import AgentChain
 from agent.executor import ToolSpec
 from agent.memory import MemoryManager
+<<<<<<< HEAD
 from config.settings import get_settings
 from tools.code_parser import build_project_map, get_project_readme, parse_repository
+=======
+from config.settings import get_settings, groq_key_rotator
+from tools.code_parser import parse_repository
+from tools.code_parser import build_project_map, get_project_readme
+>>>>>>> 85dca65 (Optimize Agent Runner: Apply API key rotation, remove token-bloating file injection, and use smart project mapping)
 from tools.diff_generator import generate_repo_diff
 from tools.github_tool import (
     clone_repository,
@@ -90,8 +96,13 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str]) -> list[ToolSpec]:
                 settings = get_settings()
                 gen_llm = ChatGroq(
                     model=settings.llm_model,
+<<<<<<< HEAD
                     api_key=SecretStr(settings.groq_api_key) if settings.groq_api_key else None,
                     temperature=0,
+=======
+                    api_key=groq_key_rotator.get_key(),  # MULTI-KEY ROTATION APPLIED
+                    temperature=0
+>>>>>>> 85dca65 (Optimize Agent Runner: Apply API key rotation, remove token-bloating file injection, and use smart project mapping)
                 )
 
                 gen_prompt = ChatPromptTemplate.from_messages(
@@ -211,35 +222,34 @@ def run_agent(
         )
         git_repo = clone_repository(authenticated_url, repo_path)
 
-        # 2. Parse repo files
+        # 2. Parse repo files intelligently
         logger.info("Parsing repository files")
-        repo_files_before: dict[str, str] = parse_repository(repo_path)
-        initial_project_map = build_project_map(repo_path)
+        # Pass the instruction as a target hint to prioritize files
+        project_map = build_project_map(repo_path, target_hints=[instruction])
         readme_generated = False
 
-        generated_readme = get_project_readme(initial_project_map)
+        generated_readme = get_project_readme(project_map)
         if generated_readme:
             readme_path = repo_path / "README.md"
             readme_path.write_text(generated_readme, encoding="utf-8")
             logger.info("Generated README.md from repository analysis")
             readme_generated = True
+            # Rebuild map to include the new README
+            project_map = build_project_map(repo_path, target_hints=[instruction])
 
-        project_map = build_project_map(repo_path)
-        repo_files_for_agent: dict[str, str] = parse_repository(repo_path)
-
-        file_context_lines = []
-        for rel_path, content in repo_files_for_agent.items():
-            file_context_lines.append(f"\n### FILE: {rel_path}\n```\n{content}\n```")
-        file_context = "\n".join(file_context_lines)
-
-        enriched_instruction = (
-            f"{instruction}\n\n---\nRepository file tree and contents:\n{file_context}"
-        )
+        # CRITICAL FIX: We no longer concatenate all file contents into the instruction.
+        # The agent relies purely on the project_map and memory optimizations we implemented.
+        repo_files_for_agent = project_map["files"]
+        repo_files_before = repo_files_for_agent.copy()
 
         # 3. Build LLM + tools
         llm = ChatGroq(
             model=settings.llm_model,
+<<<<<<< HEAD
             api_key=SecretStr(settings.groq_api_key) if settings.groq_api_key else None,
+=======
+            api_key=groq_key_rotator.get_key(), # MULTI-KEY ROTATION APPLIED
+>>>>>>> 85dca65 (Optimize Agent Runner: Apply API key rotation, remove token-bloating file injection, and use smart project mapping)
             temperature=0,
         )
         tools = _build_tools(repo_path, repo_files_for_agent)
@@ -249,7 +259,7 @@ def run_agent(
         chain = AgentChain(llm=llm, tools=tools, memory=_memory)
         result = chain.run_with_project_map(
             session_id=session_id,
-            instruction=enriched_instruction,
+            instruction=instruction, # Pass raw instruction, saving thousands of tokens!
             project_map=project_map,
         )
 
