@@ -82,7 +82,7 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str]) -> list[ToolSpec]:
             if is_placeholder or len(updated_content.strip()) < 50:
                 logger.info(
                     "code_editor: placeholder detected for %s — generating real content with LLM.",
-                    change_filename,
+                    filename
                 )
                 target = repo_path / change_filename
                 current_content = target.read_text(encoding="utf-8") if target.exists() else ""
@@ -90,8 +90,8 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str]) -> list[ToolSpec]:
                 settings = get_settings()
                 gen_llm = ChatGroq(
                     model=settings.llm_model,
-                    api_key=SecretStr(settings.groq_api_key) if settings.groq_api_key else None,
-                    temperature=0,
+                    api_key=settings.groq_api_key,
+                    temperature=0
                 )
 
                 gen_prompt = ChatPromptTemplate.from_messages(
@@ -125,20 +125,12 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str]) -> list[ToolSpec]:
                 )
 
                 chain = gen_prompt | gen_llm
-                response = chain.invoke(
-                    {
-                        "filename": change_filename,
-                        "current_content": current_content or "# Empty file",
-                        "instruction": change_reason
-                        or "Add docstrings and type hints to all functions",
-                    }
-                )
-                raw_content = response.content
-                updated_content = (
-                    raw_content.strip()
-                    if isinstance(raw_content, str)
-                    else str(raw_content).strip()
-                )
+                response = chain.invoke({
+                    "filename": filename,
+                    "current_content": current_content or "# Empty file",
+                    "instruction": reason or "Add docstrings and type hints to all functions"
+                })
+                updated_content = response.content.strip()
 
                 if updated_content.startswith("```"):
                     lines = updated_content.split("\n")
@@ -149,14 +141,12 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str]) -> list[ToolSpec]:
             target = repo_path / change_filename
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(updated_content, encoding="utf-8")
-            logger.info("code_editor: wrote %s (%d bytes)", change_filename, len(updated_content))
-            applied.append(
-                {
-                    "filename": change_filename,
-                    "updated_content": updated_content,
-                    "reason": change_reason,
-                }
-            )
+            logger.info("code_editor: wrote %s (%d bytes)", filename, len(updated_content))
+            applied.append({
+                "filename": filename,
+                "updated_content": updated_content,
+                "reason": reason
+            })
 
         notes = (
             f"Wrote {len(applied)} file(s): {[c['filename'] for c in applied]}"
@@ -257,10 +247,7 @@ def run_agent(
             project_map=project_map,
         )
 
-        _memory.append_ai_message(
-            session_id,
-            "Agent completed the requested task successfully."
-        )
+        _memory.append_ai_message(session_id, "Agent completed the requested task successfully.")
 
         if hasattr(result.execution, "steps"):
             _memory.set_plan(session_id, result.execution.steps)
