@@ -301,6 +301,7 @@ def run_agent(
             instruction=instruction,
             changed_files=changed_file_names,
             diff_summary=per_file_diffs,
+            impact_report=result.impact_report,
         )
 
         logger.info("Opening PR on %s", repo_full_name)
