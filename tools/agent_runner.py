@@ -1,7 +1,6 @@
-"""
-tools/agent_runner.py
+"""tools/agent_runner.py
 
-Replaces the old stub `test_executor.py`.  This is the real entry point that
+Replaces the old stub `test_executor.py`. This is the real entry point that
 `api/routes.py` calls for every job.
 
 Flow:
@@ -21,19 +20,12 @@ from pathlib import Path
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_groq import ChatGroq
-from pydantic import SecretStr
 
 from agent.chain import AgentChain
 from agent.executor import ToolSpec
 from agent.memory import MemoryManager
-<<<<<<< HEAD
-from config.settings import get_settings
-from tools.code_parser import build_project_map, get_project_readme, parse_repository
-=======
 from config.settings import get_settings, groq_key_rotator
-from tools.code_parser import parse_repository
-from tools.code_parser import build_project_map, get_project_readme
->>>>>>> 85dca65 (Optimize Agent Runner: Apply API key rotation, remove token-bloating file injection, and use smart project mapping)
+from tools.code_parser import build_project_map, get_project_readme, parse_repository
 from tools.diff_generator import generate_repo_diff
 from tools.github_tool import (
     clone_repository,
@@ -60,7 +52,11 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str]) -> list[ToolSpec]:
             reason = inputs.get("reason", "Agent-generated change")
             if filename and new_content:
                 raw_changes = [
-                    {"filename": filename, "updated_content": new_content, "reason": reason}
+                    {
+                        "filename": filename,
+                        "updated_content": new_content,
+                        "reason": reason,
+                    }
                 ]
 
         applied: list[dict] = []
@@ -96,13 +92,8 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str]) -> list[ToolSpec]:
                 settings = get_settings()
                 gen_llm = ChatGroq(
                     model=settings.llm_model,
-<<<<<<< HEAD
-                    api_key=SecretStr(settings.groq_api_key) if settings.groq_api_key else None,
-                    temperature=0,
-=======
                     api_key=groq_key_rotator.get_key(),  # MULTI-KEY ROTATION APPLIED
-                    temperature=0
->>>>>>> 85dca65 (Optimize Agent Runner: Apply API key rotation, remove token-bloating file injection, and use smart project mapping)
+                    temperature=0,
                 )
 
                 gen_prompt = ChatPromptTemplate.from_messages(
@@ -160,7 +151,11 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str]) -> list[ToolSpec]:
             target = repo_path / change_filename
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(updated_content, encoding="utf-8")
-            logger.info("code_editor: wrote %s (%d bytes)", change_filename, len(updated_content))
+            logger.info(
+                "code_editor: wrote %s (%d bytes)",
+                change_filename,
+                len(updated_content),
+            )
             applied.append(
                 {
                     "filename": change_filename,
@@ -199,8 +194,7 @@ def run_agent(
     pr_title_override: str | None = None,
     base_branch: str = "main",
 ) -> dict:
-    """
-    Full end-to-end agent run.
+    """Full end-to-end agent run.
 
     Returns:
         {
@@ -237,19 +231,14 @@ def run_agent(
             # Rebuild map to include the new README
             project_map = build_project_map(repo_path, target_hints=[instruction])
 
-        # CRITICAL FIX: We no longer concatenate all file contents into the instruction.
-        # The agent relies purely on the project_map and memory optimizations we implemented.
+        # Rely purely on the project_map and memory optimizations
         repo_files_for_agent = project_map["files"]
         repo_files_before = repo_files_for_agent.copy()
 
         # 3. Build LLM + tools
         llm = ChatGroq(
             model=settings.llm_model,
-<<<<<<< HEAD
-            api_key=SecretStr(settings.groq_api_key) if settings.groq_api_key else None,
-=======
-            api_key=groq_key_rotator.get_key(), # MULTI-KEY ROTATION APPLIED
->>>>>>> 85dca65 (Optimize Agent Runner: Apply API key rotation, remove token-bloating file injection, and use smart project mapping)
+            api_key=groq_key_rotator.get_key(),  # MULTI-KEY ROTATION APPLIED
             temperature=0,
         )
         tools = _build_tools(repo_path, repo_files_for_agent)
@@ -259,7 +248,7 @@ def run_agent(
         chain = AgentChain(llm=llm, tools=tools, memory=_memory)
         result = chain.run_with_project_map(
             session_id=session_id,
-            instruction=instruction, # Pass raw instruction, saving thousands of tokens!
+            instruction=instruction,
             project_map=project_map,
         )
 

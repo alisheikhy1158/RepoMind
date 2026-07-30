@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     # ── LLM — Groq (primary, free, fast) ─────────────────────────────────────
     # Can be a single key, or multiple keys separated by commas for rotation
     groq_api_key: str
-    llm_model: str  = "llama-3.3-70b-versatile"
+    llm_model: str = "llama-3.3-70b-versatile"
 
     # ── Plan limits ───────────────────────────────────────────────────────────
     max_plan_steps: int = 10
@@ -43,10 +43,12 @@ class Settings(BaseSettings):
         return [k.strip() for k in self.groq_api_key.split(",") if k.strip()]
 
     @model_validator(mode="after")
-    def check_groq_key(self) -> "Settings":
+    def check_groq_key(self) -> Settings:
         """Fail fast at startup if no Groq backend is configured."""
         if not self.parsed_groq_keys:
-            raise ValueError("GROQ_API_KEY must be set in your environment variables. You can provide multiple keys separated by commas.")
+            raise ValueError(
+                "GROQ_API_KEY must be set in your environment variables. You can provide multiple keys separated by commas."
+            )
         return self
 
     @property
@@ -67,11 +69,13 @@ def get_settings() -> Settings:
 
 # --- API Key Rotation Helper ---
 
+
 class GroqKeyRotator:
     """
     Thread-safe key rotator for handling 429 Rate Limits.
     Cycles through all available keys provided in GROQ_API_KEY.
     """
+
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._index = 0
@@ -83,11 +87,12 @@ class GroqKeyRotator:
             if self._keys is None:
                 # Load keys lazily on first request
                 self._keys = get_settings().parsed_groq_keys
-            
+
             key = self._keys[self._index]
             # Move to the next key for the next request (Round-robin)
             self._index = (self._index + 1) % len(self._keys)
             return key
+
 
 # Global instance to be used by the agent/LLM initialisation layer
 groq_key_rotator = GroqKeyRotator()

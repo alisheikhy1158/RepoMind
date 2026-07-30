@@ -8,6 +8,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class SessionState:
     """State persisted for a single session."""
@@ -25,9 +26,7 @@ def _estimate_message_tokens(message: BaseMessage) -> int:
 
 
 class MemoryManager:
-    """
-    Manages per-session conversation + lightweight task memory with smart token trimming.
-    """
+    """Manages per-session conversation + lightweight task memory with smart token trimming."""
 
     def __init__(self) -> None:
         self._sessions: dict[str, SessionState] = {}
@@ -55,18 +54,10 @@ class MemoryManager:
         state.completed_steps.append(step)
 
     def get_context_messages(
-<<<<<<< HEAD
-        self, session_id: str, max_messages: int | None = 12
+        self, session_id: str, max_messages: int | None = 12, max_tokens: int = 4000
     ) -> list[BaseMessage]:
-        messages = self.get_history(session_id).messages
-        if max_messages is None or len(messages) <= max_messages:
-            return messages
-        return messages[-max_messages:]
-=======
-        self, session_id: str, max_messages: Optional[int] = 12, max_tokens: int = 4000
-    ) -> List[BaseMessage]:
-        """
-        Returns recent messages within BOTH a message count limit and a token budget.
+        """Returns recent messages within BOTH a message count limit and a token budget.
+
         Always prioritizes keeping the most recent messages.
         """
         messages = self.get_history(session_id).messages
@@ -78,13 +69,13 @@ class MemoryManager:
             messages = messages[-max_messages:]
 
         # 2. Apply smart token budget trimming
-        retained_messages: List[BaseMessage] = []
+        retained_messages: list[BaseMessage] = []
         current_tokens = 0
 
         # Traverse from newest to oldest
         for msg in reversed(messages):
             msg_tokens = _estimate_message_tokens(msg)
-            
+
             # Always keep at least the very last message, even if it's large
             if not retained_messages or (current_tokens + msg_tokens <= max_tokens):
                 retained_messages.append(msg)
@@ -95,7 +86,6 @@ class MemoryManager:
                     f"Dropped {len(messages) - len(retained_messages)} older messages."
                 )
                 break
-        
+
         # Reverse back to chronological order (oldest to newest)
         return list(reversed(retained_messages))
->>>>>>> 85dca65 (Optimize Agent Runner: Apply API key rotation, remove token-bloating file injection, and use smart project mapping)
