@@ -575,14 +575,21 @@ def get_project_readme(project_map: dict[str, Any]) -> str | None:
     return project_map.get("generated_readme")
 
 
-def extract_python_imports(content: str) -> set[str]:
+def extract_python_imports(content: str, file_path: str) -> set[str]:
     """
-    Read one file's text and return the full dotted import paths it uses.
+    Read one file's text and return the full dotted import paths it uses,
+    resolving relative imports (from . import X) to absolute module paths
+    based on the importing file's own package location.
     """
     try:
         tree = ast.parse(content)
     except SyntaxError:
         return set()
+    normalized = file_path.replace("\\", "/")
+    if normalized.endswith(".py"):
+        normalized = normalized[: -len(".py")]
+    parts = normalized.split("/")
+    current_package_parts = parts[:-1]  # drop the filename itself
 
     imports: set[str] = set()
     for node in ast.walk(tree):
@@ -590,10 +597,19 @@ def extract_python_imports(content: str) -> set[str]:
             for alias in node.names:
                 imports.add(alias.name)
         elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                imports.add(node.module)
-            elif node.level > 0:
-                imports.add("__relative__")
+            if node.level == 0:
+                if node.module:
+                    imports.add(node.module)
+            else:
+                base_parts = current_package_parts[: len(current_package_parts) - (node.level - 1)]
+                if node.module:
+                    # from .executor import X  →  base_parts + ["executor"]
+                    imports.add(".".join(base_parts + node.module.split(".")))
+                else:
+                    # from . import chain  →  each imported name might be a submodule
+                    for alias in node.names:
+                        imports.add(".".join(base_parts + [alias.name]))
+
     return imports
 
 
@@ -612,7 +628,7 @@ def build_import_graph(files_by_path: dict[str, str]) -> dict[str, set[str]]:
     Do extract_python_imports() for EVERY .py file in the repo.
     """
     return {
-        path: extract_python_imports(content)
+        path: extract_python_imports(content, path)
         for path, content in files_by_path.items()
         if path.endswith(".py")
     }
@@ -620,7 +636,7 @@ def build_import_graph(files_by_path: dict[str, str]) -> dict[str, set[str]]:
 
 def get_affected_files(target_file: str, files_by_path: dict[str, str]) -> list[str]:
     """
-    Given one file, return the OTHER files that import it.
+    Given one file, return the OTHER files that import it
     """
     target_module = _module_path_from_file(target_file)
     import_graph = build_import_graph(files_by_path)
@@ -633,7 +649,7 @@ def get_affected_files(target_file: str, files_by_path: dict[str, str]) -> list[
             imported == target_module or target_module.startswith(imported + ".")
             for imported in imports
         )
-        if matched or "__relative__" in imports:
+        if matched:
             affected.append(path)
 
     return sorted(affected)
