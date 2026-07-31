@@ -30,7 +30,7 @@ DEFAULT_IGNORED_DIRS = {
     "out",
     "coverage",
     "vendor",
-    "tmp",
+    ".tmp",
 }
 
 DEFAULT_ALLOWED_EXTENSIONS = {
@@ -128,8 +128,18 @@ def _estimate_tokens(text: str) -> int:
     return len(text) // 4
 
 
-def should_skip_path(path: Path, ignored_dirs: set[str] | None = None) -> bool:
+def should_skip_path(
+    path: Path,
+    ignored_dirs: set[str] | None = None,
+    repo_root: Path | None = None,
+) -> bool:
     ignored = ignored_dirs or DEFAULT_IGNORED_DIRS
+    if repo_root is not None:
+        try:
+            rel_parts = path.relative_to(repo_root).parts
+            return any(part in ignored for part in rel_parts)
+        except ValueError:
+            pass
     return any(part in ignored for part in path.parts)
 
 
@@ -385,7 +395,7 @@ def _detect_entry_points(file_paths: list[str], repo_root: Path) -> list[str]:
 def _scan_folder_hierarchy(repo_root: Path, ignored_dirs: set[str]) -> list[str]:
     folders: set[str] = set()
     for path in repo_root.rglob("*"):
-        if should_skip_path(path, ignored_dirs):
+        if should_skip_path(path, ignored_dirs, repo_root=repo_root):
             continue
         if path.is_dir():
             folders.add(_display_path(path, repo_root) + "/")
@@ -477,7 +487,7 @@ def build_project_map(
 
     # 1. Collect all valid files
     for path in repo_root.rglob("*"):
-        if should_skip_path(path, ignored):
+        if should_skip_path(path, ignored, repo_root=repo_root):
             continue
         if not path.is_file():
             continue
