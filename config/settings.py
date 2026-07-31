@@ -1,5 +1,4 @@
-"""
-config/settings.py
+"""config/settings.py
 
 Pydantic BaseSettings for RepoMind.
 
@@ -20,7 +19,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     # ── LLM — Groq (primary, free, fast) ─────────────────────────────────────
     # Can be a single key, or multiple keys separated by commas for rotation
-    groq_api_key: str
+    groq_api_key: str = ""
     llm_model: str = "llama-3.3-70b-versatile"
 
     # ── Plan limits ───────────────────────────────────────────────────────────
@@ -72,8 +71,8 @@ def get_settings() -> Settings:
 
 
 class GroqKeyRotator:
-    """
-    Thread-safe key rotator for handling 429 Rate Limits.
+    """Thread-safe key rotator for handling 429 Rate Limits.
+
     Cycles through all available keys provided in GROQ_API_KEY.
     """
 
