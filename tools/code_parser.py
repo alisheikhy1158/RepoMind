@@ -5,7 +5,6 @@ import tomllib
 from pathlib import Path
 from typing import Any, Dict, List
 
-
 DEFAULT_IGNORED_DIRS = {
     ".git",
     "__pycache__",

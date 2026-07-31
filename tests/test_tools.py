@@ -6,7 +6,6 @@ from tools.github_tool import commit_changes
 from tools.pr_tool import build_pr_body, build_pr_title
 
 
-
 def test_code_parser_ignores_hidden_dirs(tmp_path):
     """Test that the parser reads valid files and skips ignored folders like .git"""
     # 1. Create a fake folder structure using pytest's built-in tmp_path feature

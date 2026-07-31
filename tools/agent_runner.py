@@ -82,16 +82,14 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str]) -> list[ToolSpec]:
             if is_placeholder or len(updated_content.strip()) < 50:
                 logger.info(
                     "code_editor: placeholder detected for %s — generating real content with LLM.",
-                    filename
+                    filename,
                 )
                 target = repo_path / change_filename
                 current_content = target.read_text(encoding="utf-8") if target.exists() else ""
 
                 settings = get_settings()
                 gen_llm = ChatGroq(
-                    model=settings.llm_model,
-                    api_key=settings.groq_api_key,
-                    temperature=0
+                    model=settings.llm_model, api_key=settings.groq_api_key, temperature=0
                 )
 
                 gen_prompt = ChatPromptTemplate.from_messages(
@@ -125,11 +123,13 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str]) -> list[ToolSpec]:
                 )
 
                 chain = gen_prompt | gen_llm
-                response = chain.invoke({
-                    "filename": filename,
-                    "current_content": current_content or "# Empty file",
-                    "instruction": reason or "Add docstrings and type hints to all functions"
-                })
+                response = chain.invoke(
+                    {
+                        "filename": filename,
+                        "current_content": current_content or "# Empty file",
+                        "instruction": reason or "Add docstrings and type hints to all functions",
+                    }
+                )
                 updated_content = response.content.strip()
 
                 if updated_content.startswith("```"):
@@ -142,11 +142,9 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str]) -> list[ToolSpec]:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(updated_content, encoding="utf-8")
             logger.info("code_editor: wrote %s (%d bytes)", filename, len(updated_content))
-            applied.append({
-                "filename": filename,
-                "updated_content": updated_content,
-                "reason": reason
-            })
+            applied.append(
+                {"filename": filename, "updated_content": updated_content, "reason": reason}
+            )
 
         notes = (
             f"Wrote {len(applied)} file(s): {[c['filename'] for c in applied]}"
