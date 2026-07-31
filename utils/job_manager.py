@@ -5,16 +5,16 @@ from datetime import UTC, datetime
 
 @dataclass
 class JobRecord:
-    job_id: str
-    repo_url: str
-    instruction: str
-    status: str = "queued"
-    pr_url: str | None = None
-    diff_summary: str | None = None
-    error_message: str | None = None
-    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
-    started_at: datetime | None = None
-    finished_at: datetime | None = None
+    job_id:        str
+    repo_url:      str
+    instruction:   str
+    status:        str = "queued"
+    pr_url:        Optional[str] = None
+    diff_summary:  Optional[str] = None
+    error_message: Optional[str] = None
+    created_at:    datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    started_at:    Optional[datetime] = None
+    finished_at:   Optional[datetime] = None
 
     def elapsed_time(self) -> float | None:
         if self.started_at is None:
@@ -56,14 +56,9 @@ class JobManager:
             raise JobNotFoundError(job_id)
         return record
 
-    def update(
-        self,
-        job_id: str,
-        status: str | None = None,
-        pr_url: str | None = None,
-        diff_summary: str | None = None,
-        error_message: str | None = None,
-    ) -> None:
+    def update(self, job_id: str, status: Optional[str] = None,
+               pr_url: Optional[str] = None, diff_summary: Optional[str] = None,
+               error_message: Optional[str] = None) -> None:
         record = self.get(job_id)
         if status is not None:
             record.status = status
