@@ -10,6 +10,7 @@ from agent.executor import ExecutorOutput, StepExecutor, ToolSpec
 from agent.memory import MemoryManager
 from agent.planner import Plan, TaskPlanner
 from prompts.system_prompt import SYSTEM_PROMPT
+from tools.code_parser import analyze_plan_impact
 
 
 @dataclass
@@ -18,6 +19,7 @@ class ChainResult:
     instruction: str
     plan: Plan
     execution: ExecutorOutput
+    impact_report: dict[str, Any]
 
 
 class AgentChain:
@@ -82,6 +84,8 @@ class AgentChain:
             context_messages=context_with_system,
             project_map=project_map,
         )
+        files_by_path = (project_map or {}).get("files", {})
+        impact_report = analyze_plan_impact(plan.steps, files_by_path)
         self.memory.set_plan(session_id, [s.task for s in plan.steps])
 
         self._inject_memory_context(context_with_system)
@@ -98,6 +102,7 @@ class AgentChain:
             instruction=instruction,
             plan=plan,
             execution=execution,
+            impact_report=impact_report,
         )
 
     # ── Private helpers ──────────────────────────────────────────────────────

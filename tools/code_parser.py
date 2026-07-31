@@ -655,7 +655,7 @@ def extract_python_imports(content: str, file_path: str) -> set[str]:
     if normalized.endswith(".py"):
         normalized = normalized[:-len(".py")]
     parts = normalized.split("/")
-    current_package_parts = parts[:-1]
+    current_package_parts = parts[:-1]  # drop the filename itself
 
     imports: set[str] = set()
     for node in ast.walk(tree):
@@ -669,8 +669,10 @@ def extract_python_imports(content: str, file_path: str) -> set[str]:
             else:
                 base_parts = current_package_parts[: len(current_package_parts) - (node.level - 1)]
                 if node.module:
+                    # from .executor import X  →  base_parts + ["executor"]
                     imports.add(".".join(base_parts + node.module.split(".")))
                 else:
+                    # from . import chain  →  each imported name might be a submodule
                     for alias in node.names:
                         imports.add(".".join(base_parts + [alias.name]))
 
@@ -714,7 +716,9 @@ def get_affected_files(target_file: str, files_by_path: dict[str, str]) -> list[
 
 
 def analyze_plan_impact(plan_steps: list, files_by_path: dict[str, str]) -> dict[str, Any]:
-    """Given a list of PlanStep-like objects, return an impact report."""
+    """Given a list of PlanStep-like objects (each with .target_files),
+    return an impact report: affected files + risk flags per target file.
+    """
     impact_report: dict[str, Any] = {}
 
     for step in plan_steps:
