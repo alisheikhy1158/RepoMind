@@ -547,8 +547,7 @@ def build_project_map(
     entry_points = _detect_entry_points(list(ordered_files.keys()), repo_root)
     folder_hierarchy = _scan_folder_hierarchy(repo_root, ignored)
     has_root_readme = any(
-        path.lower() == "readme.md" or path.lower() == "readme"
-        for path in files_by_path
+        path.lower() == "readme.md" or path.lower() == "readme" for path in files_by_path
     )
 
     generated_readme = (
@@ -653,7 +652,7 @@ def extract_python_imports(content: str, file_path: str) -> set[str]:
         return set()
     normalized = file_path.replace("\\", "/")
     if normalized.endswith(".py"):
-        normalized = normalized[:-len(".py")]
+        normalized = normalized[: -len(".py")]
     parts = normalized.split("/")
     current_package_parts = parts[:-1]  # drop the filename itself
 
@@ -683,7 +682,7 @@ def _module_path_from_file(path: str) -> str:
     """Convert a file path into the dotted module path Python would use to import it."""
     normalized = path.replace("\\", "/")
     if normalized.endswith(".py"):
-        normalized = normalized[:-len(".py")]
+        normalized = normalized[: -len(".py")]
     return normalized.replace("/", ".")
 
 
