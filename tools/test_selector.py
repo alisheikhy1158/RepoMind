@@ -9,10 +9,9 @@ This is sufficient for the unit‑test in the task description and can be extend
 """
 
 import fnmatch
-from typing import List
 
 
-def select_test_context(file_list: List[str], instruction: str) -> List[str]:
+def select_test_context(file_list: list[str], instruction: str) -> list[str]:
     """Return a subset of *file_list* that are likely test files for *instruction*.
 
     The function applies a two‑step heuristic:

@@ -296,7 +296,7 @@ def _detect_languages(file_paths: list[str]) -> list[str]:
     return sorted(languages)
 
 
-def _detect_frameworks(files_by_path: dict[str, str], repo_root: Path) -> list[str]:
+def _detect_frameworks(files_by_path: dict[str, str]) -> list[str]:
     frameworks: list[str] = []
     lower_paths = {path.lower() for path in files_by_path}
     searchable_contents = [
@@ -529,7 +529,7 @@ def build_project_map(
     # Build remaining structures based on the selected files
     languages = _detect_languages(list(ordered_files.keys()))
     dependency_summary = _build_dependency_summary(files_by_path)
-    frameworks = _detect_frameworks(files_by_path, repo_root)
+    frameworks = _detect_frameworks(files_by_path)
     entry_points = _detect_entry_points(list(ordered_files.keys()), repo_root)
     folder_hierarchy = _scan_folder_hierarchy(repo_root, ignored)
     has_root_readme = any(path.lower() == "readme.md" for path in files_by_path)
