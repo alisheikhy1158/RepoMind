@@ -643,7 +643,10 @@ def get_project_readme(project_map: dict[str, Any]) -> str | None:
 
 
 def extract_python_imports(content: str, file_path: str) -> set[str]:
-    """Read one file's text and return the full dotted import paths it uses."""
+    """Read one file's text and return the full dotted import paths it uses,
+    resolving relative imports (from . import X) to absolute module paths
+    based on the importing file's own package location.
+    """
     try:
         tree = ast.parse(content)
     except SyntaxError:
