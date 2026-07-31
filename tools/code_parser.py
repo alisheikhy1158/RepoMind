@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import json
 import logging
 import tomllib
@@ -137,10 +138,10 @@ def should_skip_path(
     if repo_root is not None:
         try:
             rel_parts = path.relative_to(repo_root).parts
-            return any(part in ignored for part in rel_parts)
+            return any(part.startswith(".") or part in ignored for part in rel_parts)
         except ValueError:
             pass
-    return any(part in ignored for part in path.parts)
+    return any(part.startswith(".") or part in ignored for part in path.parts)
 
 
 def read_file_content(file_path: str | Path) -> str:
@@ -361,7 +362,7 @@ def _detect_frameworks(files_by_path: dict[str, str]) -> list[str]:
         add("Express")
     if "@nestjs/core" in package_json:
         add("NestJS")
-    if any(token in package_json for token in ('"vue"', "@vue/", "vue-router", "nuxt")):
+    if any(token in package_json for token in ("vue", "@vue/", "vue-router", "nuxt")):
         add("Vue")
     if any(token in package_json for token in ("@angular/core", "@angular/cli", "angular")):
         add("Angular")
@@ -382,13 +383,16 @@ def _detect_entry_points(file_paths: list[str], repo_root: Path) -> list[str]:
         "app.py",
         "server.py",
         "main.ts",
+        "src/main.ts",
         "index.ts",
         "index.js",
         "main.rs",
     ):
         candidate = repo_root / fallback
-        if candidate.exists() and fallback not in entry_points:
-            entry_points.insert(0, fallback)
+        if candidate.exists():
+            rel_candidate = candidate.relative_to(repo_root).as_posix()
+            if rel_candidate not in entry_points:
+                entry_points.insert(0, rel_candidate)
     return entry_points
 
 
@@ -469,7 +473,7 @@ def build_project_map(
     allowed_extensions: set[str] | None = None,
     ignored_dirs: set[str] | None = None,
     target_hints: list[str] | None = None,
-    max_tokens: int = 50000,  # Strict token limit per request
+    max_tokens: int = 50000,
 ) -> dict[str, Any]:
     """Build a structured project map using a token-aware relevance scorer."""
     repo_root = Path(repo_path)
@@ -542,7 +546,10 @@ def build_project_map(
     frameworks = _detect_frameworks(files_by_path)
     entry_points = _detect_entry_points(list(ordered_files.keys()), repo_root)
     folder_hierarchy = _scan_folder_hierarchy(repo_root, ignored)
-    has_root_readme = any(path.lower() == "readme.md" for path in files_by_path)
+    has_root_readme = any(
+        path.lower() == "readme.md" or path.lower() == "readme"
+        for path in files_by_path
+    )
 
     generated_readme = (
         None
@@ -633,3 +640,40 @@ def summarize_project_map(project_map: dict[str, Any]) -> str:
 def get_project_readme(project_map: dict[str, Any]) -> str | None:
     """Return generated README content when the repository does not ship one."""
     return project_map.get("generated_readme")
+
+
+def resolve_relative_import(current_rel_path: str, level: int, module: str | None) -> list[str]:
+    cur = Path(current_rel_path)
+    parent = cur.parent
+    for _ in range(max(0, level - 1)):
+        parent = parent.parent
+
+    module_path = module.replace(".", "/") if module else ""
+    target = (parent / module_path).as_posix()
+    candidates = []
+    py_candidate = f"{target}.py"
+    init_candidate = f"{target}/__init__.py"
+    candidates.extend([py_candidate, init_candidate])
+    return [p.lstrip("./") for p in candidates]
+
+
+def get_affected_files(source_rel_path: str, repo_files_map: dict[str, str]) -> list[str]:
+    src_txt = repo_files_map.get(source_rel_path)
+    if src_txt is None:
+        return []
+    try:
+        tree = ast.parse(src_txt)
+    except Exception:
+        return []
+    affected = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.level and node.level > 0:
+            candidates = resolve_relative_import(source_rel_path, node.level, node.module or "")
+            for c in candidates:
+                if c in repo_files_map:
+                    affected.add(c)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            mod_path = node.module.replace(".", "/") + ".py"
+            if mod_path in repo_files_map:
+                affected.add(mod_path)
+    return sorted(affected)
