@@ -642,38 +642,94 @@ def get_project_readme(project_map: dict[str, Any]) -> str | None:
     return project_map.get("generated_readme")
 
 
-def resolve_relative_import(current_rel_path: str, level: int, module: str | None) -> list[str]:
-    cur = Path(current_rel_path)
-    parent = cur.parent
-    for _ in range(max(0, level - 1)):
-        parent = parent.parent
-
-    module_path = module.replace(".", "/") if module else ""
-    target = (parent / module_path).as_posix()
-    candidates = []
-    py_candidate = f"{target}.py"
-    init_candidate = f"{target}/__init__.py"
-    candidates.extend([py_candidate, init_candidate])
-    return [p.lstrip("./") for p in candidates]
-
-
-def get_affected_files(source_rel_path: str, repo_files_map: dict[str, str]) -> list[str]:
-    src_txt = repo_files_map.get(source_rel_path)
-    if src_txt is None:
-        return []
+def extract_python_imports(content: str, file_path: str) -> set[str]:
+    """Read one file's text and return the full dotted import paths it uses."""
     try:
-        tree = ast.parse(src_txt)
-    except Exception:
-        return []
-    affected = set()
+        tree = ast.parse(content)
+    except SyntaxError:
+        return set()
+    normalized = file_path.replace("\\", "/")
+    if normalized.endswith(".py"):
+        normalized = normalized[:-len(".py")]
+    parts = normalized.split("/")
+    current_package_parts = parts[:-1]
+
+    imports: set[str] = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.level and node.level > 0:
-            candidates = resolve_relative_import(source_rel_path, node.level, node.module or "")
-            for c in candidates:
-                if c in repo_files_map:
-                    affected.add(c)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            mod_path = node.module.replace(".", "/") + ".py"
-            if mod_path in repo_files_map:
-                affected.add(mod_path)
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                imports.add(alias.name)
+        elif isinstance(node, ast.ImportFrom):
+            if node.level == 0:
+                if node.module:
+                    imports.add(node.module)
+            else:
+                base_parts = current_package_parts[: len(current_package_parts) - (node.level - 1)]
+                if node.module:
+                    imports.add(".".join(base_parts + node.module.split(".")))
+                else:
+                    for alias in node.names:
+                        imports.add(".".join(base_parts + [alias.name]))
+
+    return imports
+
+
+def _module_path_from_file(path: str) -> str:
+    """Convert a file path into the dotted module path Python would use to import it."""
+    normalized = path.replace("\\", "/")
+    if normalized.endswith(".py"):
+        normalized = normalized[:-len(".py")]
+    return normalized.replace("/", ".")
+
+
+def build_import_graph(files_by_path: dict[str, str]) -> dict[str, set[str]]:
+    """Do extract_python_imports() for EVERY .py file in the repo."""
+    return {
+        path: extract_python_imports(content, path)
+        for path, content in files_by_path.items()
+        if path.endswith(".py")
+    }
+
+
+def get_affected_files(target_file: str, files_by_path: dict[str, str]) -> list[str]:
+    """Given one file, return the OTHER files that import it."""
+    target_module = _module_path_from_file(target_file)
+    import_graph = build_import_graph(files_by_path)
+
+    affected = []
+    for path, imports in import_graph.items():
+        if path == target_file:
+            continue
+        matched = any(
+            imported == target_module or target_module.startswith(imported + ".")
+            for imported in imports
+        )
+        if matched:
+            affected.append(path)
+
     return sorted(affected)
+
+
+def analyze_plan_impact(plan_steps: list, files_by_path: dict[str, str]) -> dict[str, Any]:
+    """Given a list of PlanStep-like objects, return an impact report."""
+    impact_report: dict[str, Any] = {}
+
+    for step in plan_steps:
+        for target_file in step.target_files:
+            if target_file in impact_report:
+                continue
+
+            affected = get_affected_files(target_file, files_by_path)
+            is_high_risk = _is_dependency_file(target_file) or _is_important_file(target_file)
+
+            impact_report[target_file] = {
+                "affected_files": affected,
+                "high_risk": is_high_risk,
+                "risk_reason": (
+                    "Modifies a dependency/config file used by other tooling."
+                    if is_high_risk
+                    else ""
+                ),
+            }
+
+    return impact_report
