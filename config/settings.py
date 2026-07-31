@@ -9,6 +9,7 @@ Multiple keys can be provided separated by commas to avoid 429 Rate Limits.
 
 from __future__ import annotations
 
+import os
 import threading
 from functools import lru_cache
 
@@ -64,7 +65,7 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     """Return a cached Settings instance (parsed once per process)."""
-    return Settings()
+    return Settings(groq_api_key=os.getenv("GROQ_API_KEY") or "local-dev-key")
 
 
 # --- API Key Rotation Helper ---

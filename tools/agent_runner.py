@@ -20,6 +20,7 @@ from pathlib import Path
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_groq import ChatGroq
+from pydantic import SecretStr
 
 from agent.chain import AgentChain
 from agent.executor import ToolSpec
@@ -92,7 +93,7 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str]) -> list[ToolSpec]:
                 settings = get_settings()
                 gen_llm = ChatGroq(
                     model=settings.llm_model,
-                    api_key=groq_key_rotator.get_key(),  # MULTI-KEY ROTATION APPLIED
+                    api_key=SecretStr(groq_key_rotator.get_key()),  # MULTI-KEY ROTATION APPLIED
                     temperature=0,
                 )
 
@@ -238,7 +239,7 @@ def run_agent(
         # 3. Build LLM + tools
         llm = ChatGroq(
             model=settings.llm_model,
-            api_key=groq_key_rotator.get_key(),  # MULTI-KEY ROTATION APPLIED
+            api_key=SecretStr(groq_key_rotator.get_key()),  # MULTI-KEY ROTATION APPLIED
             temperature=0,
         )
         tools = _build_tools(repo_path, repo_files_for_agent)
