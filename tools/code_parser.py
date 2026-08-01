@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import tomllib
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 DEFAULT_IGNORED_DIRS = {
     ".git",
