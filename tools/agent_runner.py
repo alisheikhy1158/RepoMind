@@ -53,18 +53,18 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str]) -> list[ToolSpec]:
             reason = inputs.get("reason", "Agent-generated change")
             if filename and new_content:
                 raw_changes = [
-                    {
-                        "filename": filename,
-                        "updated_content": new_content,
-                        "reason": reason,
-                    }
+                    {"filename": filename, "updated_content": new_content, "reason": reason}
                 ]
 
         applied: list[dict] = []
         for change in raw_changes:
-            change_filename = change.get("filename", "")
+            change_filename = str(change.get("filename", ""))
             updated_content = change.get("updated_content", "")
-            change_reason = change.get("reason", "Agent change")
+
+            if not isinstance(updated_content, str):
+                updated_content = str(updated_content)
+
+            change_reason = str(change.get("reason", "Agent change"))
 
             if not change_filename or not updated_content.strip():
                 logger.warning("code_editor: skipping change with empty filename or content.")
@@ -136,12 +136,12 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str]) -> list[ToolSpec]:
                         or "Add docstrings and type hints to all functions",
                     }
                 )
-                raw_content = response.content
-                updated_content = (
-                    raw_content.strip()
-                    if isinstance(raw_content, str)
-                    else str(raw_content).strip()
-                )
+                content = response.content
+
+                if isinstance(content, str):
+                    updated_content = content.strip()
+                else:
+                    updated_content = "\n".join(str(item) for item in content).strip()
 
                 if updated_content.startswith("```"):
                     lines = updated_content.split("\n")
@@ -149,9 +149,10 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str]) -> list[ToolSpec]:
                         lines[1:-1] if lines[-1].strip() == "```" else lines[1:]
                     )
 
-            target = repo_path / change_filename
+            target = repo_path / filename
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(updated_content, encoding="utf-8")
+
             logger.info(
                 "code_editor: wrote %s (%d bytes)",
                 change_filename,
