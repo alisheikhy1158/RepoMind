@@ -1,5 +1,6 @@
 import tempfile
 from pathlib import Path
+
 from git import Repo
 
 
@@ -30,9 +31,9 @@ def parse_repo(repo_url: str) -> list[str]:
             # Collect all file paths recursively, ignoring directories.
             file_paths = [
                 str(p.relative_to(repo_root).as_posix())
-                for p in repo_root.rglob('*')
+                for p in repo_root.rglob("*")
                 if p.is_file()
             ]
             return file_paths
     except Exception as e:
-        raise RuntimeError(f"Failed to clone repository: {e}")
+        raise RuntimeError(f"Failed to clone repository: {e}") from e
