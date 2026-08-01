@@ -70,13 +70,10 @@ class MemoryManager:
             del self._sessions[session_id]
 
     def get_context_messages(
- task-7-smarter-agent
         self,
         session_id: str,
         max_messages: int | None = 12,
-
-        self, session_id: str, max_messages: int | None = 12, max_tokens: int = 4000
- main
+        max_tokens: int = 4000,
     ) -> list[BaseMessage]:
         """Returns recent messages within BOTH a message count limit and a token budget.
 
