@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 
 from langchain_core.chat_history import InMemoryChatMessageHistory
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -16,10 +19,14 @@ class SessionState:
     last_plan: list[str] = field(default_factory=list)
 
 
+def _estimate_message_tokens(message: BaseMessage) -> int:
+    """Fast heuristic to estimate tokens in a message (approx 4 chars per token)."""
+    content = str(message.content) if message.content else ""
+    return len(content) // 4
+
+
 class MemoryManager:
-    """
-    Manages per-session conversation + lightweight task memory.
-    """
+    """Manages per-session conversation + lightweight task memory with smart token trimming."""
 
     def __init__(self) -> None:
         self._sessions: dict[str, SessionState] = {}
@@ -63,13 +70,44 @@ class MemoryManager:
             del self._sessions[session_id]
 
     def get_context_messages(
+ task-7-smarter-agent
         self,
         session_id: str,
         max_messages: int | None = 12,
+
+        self, session_id: str, max_messages: int | None = 12, max_tokens: int = 4000
+ main
     ) -> list[BaseMessage]:
+        """Returns recent messages within BOTH a message count limit and a token budget.
+
+        Always prioritizes keeping the most recent messages.
+        """
         messages = self.get_history(session_id).messages
+        if not messages:
+            return []
 
-        if max_messages is None or len(messages) <= max_messages:
-            return messages
+        # 1. Apply simple message count cutoff first
+        if max_messages is not None and len(messages) > max_messages:
+            messages = messages[-max_messages:]
 
-        return messages[-max_messages:]
+        # 2. Apply smart token budget trimming
+        retained_messages: list[BaseMessage] = []
+        current_tokens = 0
+
+        # Traverse from newest to oldest
+        for msg in reversed(messages):
+            msg_tokens = _estimate_message_tokens(msg)
+
+            # Always keep at least the very last message, even if it's large
+            if not retained_messages or (current_tokens + msg_tokens <= max_tokens):
+                retained_messages.append(msg)
+                current_tokens += msg_tokens
+            else:
+                logger.info(
+                    f"Memory Trim: Token budget reached ({current_tokens}/{max_tokens}). "
+                    f"Dropped {len(messages) - len(retained_messages)} older messages."
+                )
+                break
+
+        # Reverse back to chronological order (oldest to newest)
+        return list(reversed(retained_messages))

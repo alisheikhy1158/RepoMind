@@ -1,7 +1,6 @@
-"""
-tools/agent_runner.py
+"""tools/agent_runner.py
 
-Replaces the old stub `test_executor.py`.  This is the real entry point that
+Replaces the old stub `test_executor.py`. This is the real entry point that
 `api/routes.py` calls for every job.
 
 Flow:
@@ -26,7 +25,7 @@ from pydantic import SecretStr
 from agent.chain import AgentChain
 from agent.executor import ToolSpec
 from agent.memory import MemoryManager
-from config.settings import get_settings
+from config.settings import get_settings, groq_key_rotator
 from tools.code_parser import build_project_map, get_project_readme, parse_repository
 from tools.diff_generator import generate_repo_diff
 from tools.github_tool import (
@@ -55,9 +54,15 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str]) -> list[ToolSpec]:
             if filename and new_content:
                 raw_changes = [
                     {
+<<<<<<< HEAD
                         "filename": change_filename,
                         "updated_content": new_content,
                         "reason": change_reason,
+=======
+                        "filename": filename,
+                        "updated_content": new_content,
+                        "reason": reason,
+>>>>>>> bf1feed38307824d7d8b97e09f211cb0ca9d63b9
                     }
                 ]
 
@@ -98,7 +103,11 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str]) -> list[ToolSpec]:
                 settings = get_settings()
                 gen_llm = ChatGroq(
                     model=settings.llm_model,
+<<<<<<< HEAD
                     api_key=SecretStr(settings.groq_api_key) if settings.groq_api_key else None,
+=======
+                    api_key=SecretStr(groq_key_rotator.get_key()),  # MULTI-KEY ROTATION APPLIED
+>>>>>>> bf1feed38307824d7d8b97e09f211cb0ca9d63b9
                     temperature=0,
                 )
 
@@ -157,7 +166,15 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str]) -> list[ToolSpec]:
             target = repo_path / filename
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(updated_content, encoding="utf-8")
+<<<<<<< HEAD
             logger.info("code_editor: wrote %s (%d bytes)", change_filename, len(updated_content))
+=======
+            logger.info(
+                "code_editor: wrote %s (%d bytes)",
+                change_filename,
+                len(updated_content),
+            )
+>>>>>>> bf1feed38307824d7d8b97e09f211cb0ca9d63b9
             applied.append(
                 {
                     "filename": change_filename,
@@ -196,8 +213,7 @@ def run_agent(
     pr_title_override: str | None = None,
     base_branch: str = "main",
 ) -> dict:
-    """
-    Full end-to-end agent run.
+    """Full end-to-end agent run.
 
     Returns:
         {
@@ -219,35 +235,29 @@ def run_agent(
         )
         git_repo = clone_repository(authenticated_url, repo_path)
 
-        # 2. Parse repo files
+        # 2. Parse repo files intelligently
         logger.info("Parsing repository files")
-        repo_files_before: dict[str, str] = parse_repository(repo_path)
-        initial_project_map = build_project_map(repo_path)
+        # Pass the instruction as a target hint to prioritize files
+        project_map = build_project_map(repo_path, target_hints=[instruction])
         readme_generated = False
 
-        generated_readme = get_project_readme(initial_project_map)
+        generated_readme = get_project_readme(project_map)
         if generated_readme:
             readme_path = repo_path / "README.md"
             readme_path.write_text(generated_readme, encoding="utf-8")
             logger.info("Generated README.md from repository analysis")
             readme_generated = True
+            # Rebuild map to include the new README
+            project_map = build_project_map(repo_path, target_hints=[instruction])
 
-        project_map = build_project_map(repo_path)
-        repo_files_for_agent: dict[str, str] = parse_repository(repo_path)
-
-        file_context_lines = []
-        for rel_path, content in repo_files_for_agent.items():
-            file_context_lines.append(f"\n### FILE: {rel_path}\n```\n{content}\n```")
-        file_context = "\n".join(file_context_lines)
-
-        enriched_instruction = (
-            f"{instruction}\n\n---\nRepository file tree and contents:\n{file_context}"
-        )
+        # Rely purely on the project_map and memory optimizations
+        repo_files_for_agent = project_map["files"]
+        repo_files_before = repo_files_for_agent.copy()
 
         # 3. Build LLM + tools
         llm = ChatGroq(
             model=settings.llm_model,
-            api_key=SecretStr(settings.groq_api_key) if settings.groq_api_key else None,
+            api_key=SecretStr(groq_key_rotator.get_key()),  # MULTI-KEY ROTATION APPLIED
             temperature=0,
         )
         tools = _build_tools(repo_path, repo_files_for_agent)
@@ -257,7 +267,7 @@ def run_agent(
         chain = AgentChain(llm=llm, tools=tools, memory=_memory)
         result = chain.run_with_project_map(
             session_id=session_id,
-            instruction=enriched_instruction,
+            instruction=instruction,
             project_map=project_map,
         )
 
@@ -309,6 +319,7 @@ def run_agent(
             instruction=instruction,
             changed_files=changed_file_names,
             diff_summary=per_file_diffs,
+            impact_report=result.impact_report,
         )
 
         logger.info("Opening PR on %s", repo_full_name)
