@@ -61,7 +61,7 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str]) -> list[ToolSpec]:
         for change in raw_changes:
             change_filename = change.get("filename", "")
             updated_content = change.get("updated_content", "")
-            change_reason = change.get("reason", "Agent change")
+            # change_reason = change.get("reason", "Agent change")
 
             if not change_filename or not updated_content.strip():
                 logger.warning("code_editor: skipping change with empty filename or content.")

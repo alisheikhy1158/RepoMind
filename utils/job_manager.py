@@ -1,7 +1,6 @@
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Optional
 
 
 @dataclass
@@ -10,12 +9,12 @@ class JobRecord:
     repo_url: str
     instruction: str
     status: str = "queued"
-    pr_url: Optional[str] = None
-    diff_summary: Optional[str] = None
-    error_message: Optional[str] = None
+    pr_url: str | None = None
+    diff_summary: str | None = None
+    error_message: str | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
-    started_at: Optional[datetime] = None
-    finished_at: Optional[datetime] = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
 
     def elapsed_time(self) -> float | None:
         if self.started_at is None:
@@ -65,10 +64,10 @@ class JobManager:
     def update(
         self,
         job_id: str,
-        status: Optional[str] = None,
-        pr_url: Optional[str] = None,
-        diff_summary: Optional[str] = None,
-        error_message: Optional[str] = None,
+        status: str | None = None,
+        pr_url: str | None = None,
+        diff_summary: str | None = None,
+        error_message: str | None = None,
     ) -> None:
         record = self.get(job_id)
 
