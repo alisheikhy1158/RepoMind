@@ -1,6 +1,7 @@
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Optional
 
 
 @dataclass
@@ -12,13 +13,14 @@ class JobRecord:
     pr_url: Optional[str] = None
     diff_summary: Optional[str] = None
     error_message: Optional[str] = None
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
 
     def elapsed_time(self) -> float | None:
         if self.started_at is None:
             return None
+
         end = self.finished_at if self.finished_at is not None else datetime.now(UTC)
         return (end - self.started_at).total_seconds()
 
@@ -44,7 +46,11 @@ class JobManager:
 
     def create_job(self, repo_url: str, instruction: str) -> str:
         job_id = str(uuid.uuid4())
-        record = JobRecord(job_id=job_id, repo_url=repo_url, instruction=instruction)
+        record = JobRecord(
+            job_id=job_id,
+            repo_url=repo_url,
+            instruction=instruction,
+        )
         self._store[job_id] = record
         return job_id
 
@@ -65,16 +71,22 @@ class JobManager:
         error_message: Optional[str] = None,
     ) -> None:
         record = self.get(job_id)
+
         if status is not None:
             record.status = status
+
         if pr_url is not None:
             record.pr_url = pr_url
+
         if diff_summary is not None:
             record.diff_summary = diff_summary
+
         if error_message is not None:
             record.error_message = error_message
+
         if status == "running" and record.started_at is None:
             record.started_at = datetime.now(UTC)
+
         if status in ("completed", "failed"):
             record.finished_at = datetime.now(UTC)
 
@@ -83,6 +95,7 @@ class JobManager:
 
     def stats(self) -> dict:
         all_records = list(self._store.values())
+
         return {
             "total": len(all_records),
             "queued": sum(1 for r in all_records if r.status == "queued"),
