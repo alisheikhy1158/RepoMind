@@ -237,6 +237,20 @@ Send a follow-up instruction on an existing job to iterate on the same PR.
 }
 ```
 
+### `GET /metrics`
+
+Return live system execution metrics snapshot (jobs, tool calls, step retries, durations, failures). See [MONITORING.md](docs/MONITORING.md) for complete monitoring documentation.
+
+**Response:**
+
+```json
+{
+  "jobs": {"total": 12, "completed": 10, "failed": 1},
+  "tools": {"total_calls": 25, "by_tool": {"code_editor": 25}},
+  "durations": {"planner_duration_seconds": {"avg_seconds": 1.54}}
+}
+```
+
 ---
 
 ## How the Agent Works

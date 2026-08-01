@@ -26,6 +26,10 @@ from api.schemas import (
 from tools.agent_runner import run_agent
 from utils.job_manager import job_manager
 
+from utils.logging import get_logger
+from utils.metrics import metrics_collector
+
+logger = get_logger("api.routes")
 router = APIRouter(tags=["Agent"])
 
 
@@ -57,15 +61,34 @@ def process_job(job_id: str) -> None:
             )
         else:
             # Agent ran successfully but produced no changes.
+            err_msg = result.get("summary") or "Agent completed but no file changes were made."
+            logger.warning(
+                "Job failed - no file changes generated",
+                extra={
+                    "event": "job_failed_no_changes",
+                    "job_id": job_id,
+                    "summary": result.get("summary"),
+                },
+            )
+            metrics_collector.record_failure("JobNoChanges", err_msg)
             job_manager.update(
                 job_id,
                 status=JobStatus.failed,
-                error_message=result.get("summary")
-                or "Agent completed but no file changes were made.",
+                error_message=err_msg,
             )
 
     except Exception as e:
-        traceback.print_exc()
+        logger.error(
+            "Job execution failed with unhandled exception",
+            exc_info=e,
+            extra={
+                "event": "job_execution_exception",
+                "job_id": job_id,
+                "exception_type": type(e).__name__,
+                "error_message": str(e),
+            },
+        )
+        metrics_collector.record_failure(f"JobException:{type(e).__name__}", str(e))
         job_manager.update(job_id, status=JobStatus.failed, error_message=str(e))
 
 
@@ -133,3 +156,11 @@ async def refine(request: RefineRequest, background_tasks: BackgroundTasks) -> R
         status=JobStatus.queued,
         message="Refinement queued — agent will run with full prior context.",
     )
+
+
+@router.get("/metrics", tags=["Monitoring"])
+async def metrics() -> dict:
+    """Return system execution metrics snapshot."""
+    from utils.metrics import metrics_collector
+
+    return metrics_collector.get_metrics_summary()

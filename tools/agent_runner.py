@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import tempfile
+import time
 from pathlib import Path
 
 from langchain_core.prompts import ChatPromptTemplate
@@ -26,6 +27,7 @@ from agent.chain import AgentChain
 from agent.executor import ToolSpec
 from agent.memory import MemoryManager
 from config.settings import get_settings, groq_key_rotator
+from prompts.system_prompt import SYSTEM_PROMPT
 from tools.code_parser import build_project_map, get_project_readme, parse_repository
 from tools.diff_generator import generate_repo_diff
 from tools.github_tool import (
@@ -35,8 +37,10 @@ from tools.github_tool import (
     push_branch,
 )
 from tools.pr_tool import build_pr_body, build_pr_title, create_pull_request
+from utils.logging import get_logger
+from utils.metrics import metrics_collector
 
-logger = logging.getLogger(__name__)
+logger = get_logger("tools.agent_runner")
 
 _memory = MemoryManager()
 
@@ -205,6 +209,7 @@ def run_agent(
         }
     """
     settings = get_settings()
+    runner_start_time = time.perf_counter()
 
     with tempfile.TemporaryDirectory(prefix="repomind_") as tmp_dir:
         repo_path = Path(tmp_dir) / "repo"
@@ -315,6 +320,16 @@ def run_agent(
         )
 
         logger.info("PR opened: %s", pr.html_url)
+        runner_duration_sec = time.perf_counter() - runner_start_time
+        metrics_collector.record_duration("run_agent_duration_seconds", runner_duration_sec)
+        logger.info(
+            "Agent run completed successfully",
+            extra={
+                "event": "run_agent_complete",
+                "session_id": session_id,
+                "duration_ms": round(runner_duration_sec * 1000, 2),
+            },
+        )
         return {
             "pr_url": pr.html_url,
             "summary": diff_summary_text,

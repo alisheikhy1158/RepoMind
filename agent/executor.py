@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -11,8 +12,10 @@ from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 
 from agent.planner import Plan, PlanStep
+from utils.logging import get_logger
+from utils.metrics import metrics_collector
 
-logger = logging.getLogger(__name__)
+logger = get_logger("agent.executor")
 
 ToolFn = Callable[[dict[str, Any]], dict[str, Any]]
 
@@ -195,9 +198,12 @@ class StepExecutor:
             content = c.get("updated_content", "")
             if not content.strip():
                 logger.warning(
-                    "Step %d: tool returned an empty updated_content for %s — skipping.",
-                    step_id,
-                    c.get("filename"),
+                    f"Step {step_id}: tool returned an empty updated_content for {c.get('filename')} — skipping.",
+                    extra={
+                        "event": "empty_file_change_skipped",
+                        "step_id": step_id,
+                        "filename": c.get("filename"),
+                    },
                 )
                 continue
             changes.append(
@@ -221,12 +227,28 @@ class StepExecutor:
         """
         results: list[StepExecutionResult] = []
         all_changes: list[FileChange] = []
+        exec_start_time = time.perf_counter()
+
+        logger.info(
+            "Starting execution of plan",
+            extra={"event": "executor_start", "total_steps": len(plan.steps)},
+        )
 
         for step in plan.steps:
+            step_start_time = time.perf_counter()
             previous_summary = "\n".join([f"Step {r.step_id}: {r.notes}" for r in results])
 
             # ── 1. Choose tool ───────────────────────────────────────────────
             decision = self._decide_tool(step, previous_summary)
+            logger.info(
+                f"Step {step.id}: selected tool '{decision.tool_name}'",
+                extra={
+                    "event": "tool_selected",
+                    "step_id": step.id,
+                    "tool_name": decision.tool_name,
+                    "step_task": step.task,
+                },
+            )
 
             step_result = StepExecutionResult(
                 step_id=step.id,
@@ -241,30 +263,59 @@ class StepExecutor:
                     f"Tool '{decision.tool_name}' not found in registry; step skipped. "
                     f"Available tools: {list(self.tools_by_name.keys())}"
                 )
-                logger.warning("Step %d skipped: %s", step.id, step_result.notes)
+                logger.warning(
+                    f"Step {step.id} skipped: {step_result.notes}",
+                    extra={
+                        "event": "tool_not_found",
+                        "step_id": step.id,
+                        "tool_name": decision.tool_name,
+                    },
+                )
+                metrics_collector.record_tool_execution(decision.tool_name, outcome="not_found")
                 results.append(step_result)
                 continue
 
             # ── 2. First attempt ─────────────────────────────────────────────
             payload = self._run_tool(tool, decision.tool_input)
             file_changes = self._extract_file_changes(payload, step.id)
+            metrics_collector.record_tool_execution(decision.tool_name, outcome="success" if file_changes else "empty")
 
             # ── 3. Retry once if file_changes is empty ───────────────────────
             if not file_changes:
                 logger.warning(
-                    "Step %d returned no file_changes on first attempt — retrying once.",
-                    step.id,
+                    f"Step {step.id} returned no file_changes on first attempt — retrying once.",
+                    extra={
+                        "event": "step_retry",
+                        "step_id": step.id,
+                        "tool_name": decision.tool_name,
+                    },
                 )
                 payload = self._run_tool(tool, decision.tool_input)
                 file_changes = self._extract_file_changes(payload, step.id)
                 step_result.retried = True
+                metrics_collector.record_tool_execution(decision.tool_name, outcome="retry_success" if file_changes else "retry_empty")
 
                 if not file_changes:
+                    step_duration_sec = time.perf_counter() - step_start_time
+                    metrics_collector.record_duration("step_execution_duration_seconds", step_duration_sec)
                     step_result.notes = (
                         f"Tool '{decision.tool_name}' returned no file_changes after retry. "
                         "Step produced no output."
                     )
-                    logger.warning("Step %d produced no file_changes after retry.", step.id)
+                    logger.warning(
+                        f"Step {step.id} produced no file_changes after retry.",
+                        extra={
+                            "event": "step_failed_empty_output",
+                            "step_id": step.id,
+                            "tool_name": decision.tool_name,
+                            "duration_ms": round(step_duration_sec * 1000, 2),
+                        },
+                    )
+                    metrics_collector.record_step_executed(
+                        tool_name=decision.tool_name,
+                        retried=True,
+                        file_changes_count=0,
+                    )
                     results.append(step_result)
                     continue
 
@@ -273,10 +324,39 @@ class StepExecutor:
                 step_result.file_changes.append(change)
                 all_changes.append(change)
 
+            step_duration_sec = time.perf_counter() - step_start_time
+            metrics_collector.record_duration("step_execution_duration_seconds", step_duration_sec)
+            metrics_collector.record_step_executed(
+                tool_name=decision.tool_name,
+                retried=step_result.retried,
+                file_changes_count=len(file_changes),
+            )
+
             step_result.notes = payload.get(
                 "notes",
                 f"Step {step.id} completed; {len(file_changes)} file(s) changed.",
             )
+            logger.info(
+                f"Step {step.id} completed successfully",
+                extra={
+                    "event": "step_completed",
+                    "step_id": step.id,
+                    "tool_name": decision.tool_name,
+                    "duration_ms": round(step_duration_sec * 1000, 2),
+                    "file_changes_count": len(file_changes),
+                },
+            )
             results.append(step_result)
 
+        exec_duration_sec = time.perf_counter() - exec_start_time
+        metrics_collector.record_duration("executor_total_duration_seconds", exec_duration_sec)
+        logger.info(
+            "Plan execution completed",
+            extra={
+                "event": "executor_complete",
+                "total_executed": len(results),
+                "total_file_changes": len(all_changes),
+                "duration_ms": round(exec_duration_sec * 1000, 2),
+            },
+        )
         return ExecutorOutput(results=results, all_file_changes=all_changes)
