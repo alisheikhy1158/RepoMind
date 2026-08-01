@@ -14,7 +14,9 @@ def test_invalid_repo_url_failure_diagnostics():
     setup_logging(log_level="INFO", json_format=True, stream=log_buf)
 
     client = TestClient(app)
-    response = client.post("/run", json={"repo_url": "https://invalid-url.com/repo", "instruction": "Fix bug"})
+    response = client.post(
+        "/run", json={"repo_url": "https://invalid-url.com/repo", "instruction": "Fix bug"}
+    )
 
     assert response.status_code == 400
     data = response.json()
@@ -26,7 +28,11 @@ def test_invalid_repo_url_failure_diagnostics():
 
     # Check log diagnostic output
     log_lines = log_buf.getvalue().strip().splitlines()
-    error_logs = [json.loads(line) for line in log_lines if "InvalidRepoURLError" in line or "error_invalid_repo_url" in line]
+    error_logs = [
+        json.loads(line)
+        for line in log_lines
+        if "InvalidRepoURLError" in line or "error_invalid_repo_url" in line
+    ]
     assert len(error_logs) > 0
     assert error_logs[0]["extra"]["url"] == "https://invalid-url.com/repo"
 
@@ -34,7 +40,9 @@ def test_invalid_repo_url_failure_diagnostics():
 def test_invalid_instruction_failure_diagnostics():
     metrics_collector.reset()
     client = TestClient(app)
-    response = client.post("/run", json={"repo_url": "https://github.com/user/repo", "instruction": "   "})
+    response = client.post(
+        "/run", json={"repo_url": "https://github.com/user/repo", "instruction": "   "}
+    )
 
     assert response.status_code == 400
     data = response.json()

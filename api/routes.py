@@ -2,7 +2,6 @@
 FastAPI Routes for RepoMind Agent System
 """
 
-import traceback
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, BackgroundTasks
@@ -25,7 +24,6 @@ from api.schemas import (
 # ── Real agent runner (replaces the old stub test_executor) ───────────────────
 from tools.agent_runner import run_agent
 from utils.job_manager import job_manager
-
 from utils.logging import get_logger
 from utils.metrics import metrics_collector
 

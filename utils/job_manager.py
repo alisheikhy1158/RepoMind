@@ -1,6 +1,7 @@
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+
 from utils.logging import get_logger
 from utils.metrics import metrics_collector
 

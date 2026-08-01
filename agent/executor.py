@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -278,7 +277,9 @@ class StepExecutor:
             # ── 2. First attempt ─────────────────────────────────────────────
             payload = self._run_tool(tool, decision.tool_input)
             file_changes = self._extract_file_changes(payload, step.id)
-            metrics_collector.record_tool_execution(decision.tool_name, outcome="success" if file_changes else "empty")
+            metrics_collector.record_tool_execution(
+                decision.tool_name, outcome="success" if file_changes else "empty"
+            )
 
             # ── 3. Retry once if file_changes is empty ───────────────────────
             if not file_changes:
@@ -293,11 +294,15 @@ class StepExecutor:
                 payload = self._run_tool(tool, decision.tool_input)
                 file_changes = self._extract_file_changes(payload, step.id)
                 step_result.retried = True
-                metrics_collector.record_tool_execution(decision.tool_name, outcome="retry_success" if file_changes else "retry_empty")
+                metrics_collector.record_tool_execution(
+                    decision.tool_name, outcome="retry_success" if file_changes else "retry_empty"
+                )
 
                 if not file_changes:
                     step_duration_sec = time.perf_counter() - step_start_time
-                    metrics_collector.record_duration("step_execution_duration_seconds", step_duration_sec)
+                    metrics_collector.record_duration(
+                        "step_execution_duration_seconds", step_duration_sec
+                    )
                     step_result.notes = (
                         f"Tool '{decision.tool_name}' returned no file_changes after retry. "
                         "Step produced no output."

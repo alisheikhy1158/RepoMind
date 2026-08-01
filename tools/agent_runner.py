@@ -14,7 +14,6 @@ Flow:
 
 from __future__ import annotations
 
-import logging
 import tempfile
 import time
 from pathlib import Path
@@ -27,7 +26,6 @@ from agent.chain import AgentChain
 from agent.executor import ToolSpec
 from agent.memory import MemoryManager
 from config.settings import get_settings, groq_key_rotator
-from prompts.system_prompt import SYSTEM_PROMPT
 from tools.code_parser import build_project_map, get_project_readme, parse_repository
 from tools.diff_generator import generate_repo_diff
 from tools.github_tool import (
