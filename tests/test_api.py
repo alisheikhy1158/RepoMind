@@ -7,6 +7,7 @@ from pydantic import ValidationError
 from api.errors import JobNotFoundError
 from api.main import app
 from api.schemas import JobStatus, RunRequest
+from config.settings import get_settings
 from utils.job_manager import job_manager
 
 # This TestClient uses httpx under the hood to fake web requests!
@@ -25,6 +26,13 @@ def test_pydantic_models():
     # 2. Invalid RunRequest (missing instruction field)
     with pytest.raises(ValidationError):
         RunRequest(repo_url="https://github.com/test")
+
+
+def test_settings_are_initialized_with_environment_groq_key(monkeypatch):
+    """Settings should be constructible when a Groq key is provided through the environment."""
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
+    settings = get_settings()
+    assert settings.groq_api_key == "test-key"
 
 
 def test_job_manager_lifecycle():
