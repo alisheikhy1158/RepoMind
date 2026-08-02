@@ -53,17 +53,7 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str]) -> list[ToolSpec]:
             reason = inputs.get("reason", "Agent-generated change")
             if filename and new_content:
                 raw_changes = [
-                    {
-<<<<<<< HEAD
-                        "filename": change_filename,
-                        "updated_content": new_content,
-                        "reason": change_reason,
-=======
-                        "filename": filename,
-                        "updated_content": new_content,
-                        "reason": reason,
->>>>>>> bf1feed38307824d7d8b97e09f211cb0ca9d63b9
-                    }
+                    {"filename": filename, "updated_content": new_content, "reason": reason}
                 ]
 
         applied: list[dict] = []
@@ -97,17 +87,13 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str]) -> list[ToolSpec]:
                     "code_editor: placeholder detected for %s — generating real content with LLM.",
                     change_filename,
                 )
-                target = repo_path / filename
+                target = repo_path / change_filename
                 current_content = target.read_text(encoding="utf-8") if target.exists() else ""
 
                 settings = get_settings()
                 gen_llm = ChatGroq(
                     model=settings.llm_model,
-<<<<<<< HEAD
-                    api_key=SecretStr(settings.groq_api_key) if settings.groq_api_key else None,
-=======
                     api_key=SecretStr(groq_key_rotator.get_key()),  # MULTI-KEY ROTATION APPLIED
->>>>>>> bf1feed38307824d7d8b97e09f211cb0ca9d63b9
                     temperature=0,
                 )
 
@@ -166,15 +152,12 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str]) -> list[ToolSpec]:
             target = repo_path / filename
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(updated_content, encoding="utf-8")
-<<<<<<< HEAD
-            logger.info("code_editor: wrote %s (%d bytes)", change_filename, len(updated_content))
-=======
+
             logger.info(
                 "code_editor: wrote %s (%d bytes)",
                 change_filename,
                 len(updated_content),
             )
->>>>>>> bf1feed38307824d7d8b97e09f211cb0ca9d63b9
             applied.append(
                 {
                     "filename": change_filename,
