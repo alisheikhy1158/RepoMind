@@ -4,6 +4,10 @@ Pydantic BaseSettings for RepoMind.
 
 Supports only Groq backend with API Key Rotation support.
 Multiple keys can be provided separated by commas to avoid 429 Rate Limits.
+
+Also provides small resolver helpers so request-scoped credentials (from
+api/schemas.RunRequest) can override the server's own defaults without
+ever being written back into Settings or logged.
 """
 
 from __future__ import annotations
@@ -12,7 +16,7 @@ import os
 import threading
 from functools import lru_cache
 
-from pydantic import model_validator
+from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -25,8 +29,8 @@ class Settings(BaseSettings):
     # ── Plan limits ───────────────────────────────────────────────────────────
     max_plan_steps: int = 10
 
-    # ── GitHub ────────────────────────────────────────────────────────────────
-    github_token: str = ""
+    # ── GitHub (server-wide default; requests may override per-job) ──────────
+    github_token: SecretStr | None = None
     github_username: str = ""
 
     # ── App ───────────────────────────────────────────────────────────────────
@@ -47,7 +51,8 @@ class Settings(BaseSettings):
         """Fail fast at startup if no Groq backend is configured."""
         if not self.parsed_groq_keys:
             raise ValueError(
-                "GROQ_API_KEY must be set in your environment variables. You can provide multiple keys separated by commas."
+                "GROQ_API_KEY must be set in your environment variables. "
+                "You can provide multiple keys separated by commas."
             )
         return self
 
@@ -59,6 +64,58 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.app_env.lower() == "production"
+
+    # ── Request-scoped credential resolution ─────────────────────────────────
+
+    def resolve_llm_credentials(
+        self,
+        request_provider: str | None,
+        request_api_key: SecretStr | None,
+    ) -> tuple[str, str]:
+        """
+        Decide which LLM provider + key to actually use for one job.
+
+        This project supports Groq only. request_provider is accepted for
+        forward-compatibility but must be "groq" (or omitted). A request-scoped
+        key takes priority over the server's rotating key pool; when no request
+        key is supplied, the next key from groq_key_rotator is used.
+
+        Returns:
+            (provider, plain_api_key_string) — the plain string is only ever
+            held in memory for the duration of one job, never stored or logged.
+
+        Raises:
+            ValueError: If request_provider is anything other than "groq",
+                        or if no usable key is available.
+        """
+        provider = (request_provider or "groq").lower()
+        if provider != "groq":
+            raise ValueError(
+                f"Unsupported llm_provider: '{provider}'. This project runs on Groq only."
+            )
+
+        if request_api_key is not None:
+            return provider, request_api_key.get_secret_value()
+
+        return provider, groq_key_rotator.get_key()
+
+    def resolve_github_token(self, request_token: SecretStr | None) -> str:
+        """
+        Decide which GitHub token to actually use for one job.
+
+        Request-scoped token takes priority over the server default.
+
+        Raises:
+            ValueError: If no token is available from either source.
+        """
+        if request_token is not None:
+            return request_token.get_secret_value()
+        if self.github_token:
+            return self.github_token.get_secret_value()
+        raise ValueError(
+            "No GitHub token available (no request token supplied, "
+            "no server default configured)."
+        )
 
 
 @lru_cache

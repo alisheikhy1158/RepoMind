@@ -15,6 +15,14 @@ class JobRecord:
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    branch_name: str = "repomind/auto-fix"
+    pr_title: str | None = None
+    # Request-scoped credentials — held only in memory for this job's
+    # lifetime, never written to disk, and deliberately excluded from
+    # to_dict() so they can never leak via all_jobs()/status endpoints.
+    github_pat: str | None = None
+    llm_provider: str | None = None
+    llm_api_key: str | None = None
 
     def elapsed_time(self) -> float | None:
         if self.started_at is None:
