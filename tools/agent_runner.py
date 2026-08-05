@@ -18,6 +18,7 @@ import tempfile
 import time
 from pathlib import Path
 
+import requests
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_groq import ChatGroq
 from pydantic import SecretStr
@@ -25,7 +26,7 @@ from pydantic import SecretStr
 from agent.chain import AgentChain
 from agent.executor import ToolSpec
 from agent.memory import MemoryManager
-from config.settings import get_settings, groq_key_rotator
+from config.settings import get_settings
 from tools.code_parser import build_project_map, get_project_readme, parse_repository
 from tools.diff_generator import generate_repo_diff
 from tools.github_tool import (
@@ -43,7 +44,7 @@ logger = get_logger("tools.agent_runner")
 _memory = MemoryManager()
 
 
-def _build_tools(repo_path: Path, repo_files: dict[str, str]) -> list[ToolSpec]:
+def _build_tools(repo_path: Path, repo_files: dict[str, str], llm_api_key: str) -> list[ToolSpec]:
     """Build the ToolSpec list that the executor will choose from."""
 
     def code_editor(inputs: dict) -> dict:
@@ -95,7 +96,9 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str]) -> list[ToolSpec]:
                 settings = get_settings()
                 gen_llm = ChatGroq(
                     model=settings.llm_model,
-                    api_key=SecretStr(groq_key_rotator.get_key()),  # MULTI-KEY ROTATION APPLIED
+                    api_key=SecretStr(
+                        llm_api_key
+                    ),  # already rotated/resolved by resolve_llm_credentials()
                     temperature=0,
                 )
 
@@ -190,6 +193,50 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str]) -> list[ToolSpec]:
     ]
 
 
+def validate_credentials(github_token: str, llm_provider: str, llm_api_key: str) -> None:
+    """
+    Verify GitHub and LLM credentials actually work before starting a job.
+
+    Fails fast with a clear, non-sensitive error message instead of letting
+    the job fail partway through (e.g. after a slow clone).
+
+    Raises:
+        ValueError: If either credential is invalid or unreachable.
+    """
+    # 1. Validate GitHub token via a lightweight authenticated request.
+    try:
+        response = requests.get(
+            "https://api.github.com/user",
+            headers={"Authorization": f"Bearer {github_token}"},
+            timeout=10,
+        )
+    except requests.RequestException as exc:
+        raise ValueError(f"Could not reach GitHub API to validate token: {exc}") from None
+
+    if response.status_code == 401:
+        raise ValueError("GitHub token is invalid or expired.")
+    if response.status_code != 200:
+        raise ValueError(f"GitHub token validation failed (status {response.status_code}).")
+
+    # 2. Validate the LLM key with a minimal, cheap call.
+    if llm_provider == "groq":
+        try:
+            probe_llm = ChatGroq(
+                model="llama-3.3-70b-versatile",
+                api_key=SecretStr(llm_api_key),
+                temperature=0,
+            )
+            probe_llm.invoke("ping")
+        except Exception as exc:
+            raise ValueError(
+                f"LLM credential validation failed for provider 'groq': {exc}"
+            ) from None
+    else:
+        # Other providers (openai, gemini) can be validated the same way
+        # once their client construction is added below.
+        logger.info("Skipping live LLM validation for provider '%s' (not yet wired).", llm_provider)
+
+
 def run_agent(
     repo_url: str,
     instruction: str,
@@ -197,6 +244,9 @@ def run_agent(
     branch_name: str = "repomind/auto-fix",
     pr_title_override: str | None = None,
     base_branch: str = "main",
+    github_pat: str | None = None,
+    llm_provider_override: str | None = None,
+    llm_api_key: str | None = None,
 ) -> dict:
     """Full end-to-end agent run.
 
@@ -210,6 +260,18 @@ def run_agent(
     settings = get_settings()
     runner_start_time = time.perf_counter()
 
+    # Resolve request-scoped credentials, falling back to server defaults.
+    # Plain strings are held only in local variables for this job's duration
+    # never stored on settings, never logged.
+    resolved_token = settings.resolve_github_token(SecretStr(github_pat) if github_pat else None)
+    resolved_provider, resolved_llm_key = settings.resolve_llm_credentials(
+        llm_provider_override,
+        SecretStr(llm_api_key) if llm_api_key else None,
+    )
+
+    # Validate before doing any real work — fail fast, not partway through.
+    validate_credentials(resolved_token, resolved_provider, resolved_llm_key)
+
     with tempfile.TemporaryDirectory(prefix="repomind_") as tmp_dir:
         repo_path = Path(tmp_dir) / "repo"
 
@@ -217,7 +279,7 @@ def run_agent(
         logger.info("Cloning %s into %s", repo_url, repo_path)
         authenticated_url = repo_url.replace(
             "https://",
-            f"https://{settings.github_token}@",
+            f"https://{resolved_token}@",
         )
         git_repo = clone_repository(authenticated_url, repo_path)
 
@@ -243,10 +305,12 @@ def run_agent(
         # 3. Build LLM + tools
         llm = ChatGroq(
             model=settings.llm_model,
-            api_key=SecretStr(groq_key_rotator.get_key()),  # MULTI-KEY ROTATION APPLIED
+            api_key=SecretStr(
+                resolved_llm_key
+            ),  # already rotated/resolved by resolve_llm_credentials()
             temperature=0,
         )
-        tools = _build_tools(repo_path, repo_files_for_agent)
+        tools = _build_tools(repo_path, repo_files_for_agent, resolved_llm_key)
 
         # 4. Run AgentChain
         logger.info("Running AgentChain for session %s", session_id)
@@ -310,7 +374,7 @@ def run_agent(
 
         logger.info("Opening PR on %s", repo_full_name)
         pr = create_pull_request(
-            token=settings.github_token,
+            token=resolved_token,
             repo_full_name=repo_full_name,
             title=pr_title,
             body=pr_body,
