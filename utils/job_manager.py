@@ -105,18 +105,22 @@ class JobManager:
 
     def add_event(
         self,
-        job_id: str,
-        stage: str,
-        message: str,
+        job_id: str | None = None,
+        stage: str = "running",
+        message: str = "",
         progress: float = 0.0,
         data: dict | None = None,
+        session_id: str | None = None,
     ) -> dict:
         """Add an execution progress event to a job and notify active streaming subscribers."""
-        record = self.get(job_id)
+        target_id = job_id or session_id
+        if target_id is None:
+            raise ValueError("Either job_id or session_id must be provided")
+        record = self.get(target_id)
         event_id = len(record.events) + 1
         event_payload = {
             "id": event_id,
-            "job_id": job_id,
+            "job_id": target_id,
             "timestamp": datetime.now(UTC).isoformat(),
             "stage": stage,
             "message": message,
