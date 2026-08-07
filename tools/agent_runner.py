@@ -215,6 +215,12 @@ def run_agent(
 
         # 1. Clone
         logger.info("Cloning %s into %s", repo_url, repo_path)
+        job_manager.add_event(
+            session_id=session_id,
+            stage="cloning",
+            message=f"Cloning repository {repo_url}...",
+            progress=10.0,
+        )
         authenticated_url = repo_url.replace(
             "https://",
             f"https://{settings.github_token}@",
@@ -223,6 +229,12 @@ def run_agent(
 
         # 2. Parse repo files intelligently
         logger.info("Parsing repository files")
+        job_manager.add_event(
+            session_id=session_id,
+            stage="parsing",
+            message="Analyzing repository files and building project map...",
+            progress=25.0,
+        )
         # Pass the instruction as a target hint to prioritize files
         project_map = build_project_map(repo_path, target_hints=[instruction])
         readme_generated = False
@@ -250,6 +262,12 @@ def run_agent(
 
         # 4. Run AgentChain
         logger.info("Running AgentChain for session %s", session_id)
+        job_manager.add_event(
+            session_id=session_id,
+            stage="planning",
+            message="Generating execution plan with TaskPlanner...",
+            progress=40.0,
+        )
         chain = AgentChain(llm=llm, tools=tools, memory=_memory)
         result = chain.run_with_project_map(
             session_id=session_id,
@@ -259,6 +277,12 @@ def run_agent(
 
         if not result.execution.all_file_changes and not readme_generated:
             logger.warning("Agent produced no file changes for session %s", session_id)
+            job_manager.add_event(
+                session_id=session_id,
+                stage="failed",
+                message="Agent completed execution but produced no file changes.",
+                progress=100.0,
+            )
             return {
                 "pr_url": None,
                 "summary": "Agent completed but made no file changes.",
@@ -267,12 +291,24 @@ def run_agent(
 
         # 5. Create branch + commit
         logger.info("Creating branch '%s'", branch_name)
+        job_manager.add_event(
+            session_id=session_id,
+            stage="committing",
+            message=f"Creating branch '{branch_name}' and committing file changes...",
+            progress=85.0,
+        )
         create_branch(git_repo, branch_name)
 
         commit_msg = f"feat: {instruction[:100].strip()}"
         commit_sha = commit_changes(git_repo, commit_msg)
         if commit_sha is None:
             logger.warning("Nothing to commit — all writes may have been no-ops.")
+            job_manager.add_event(
+                session_id=session_id,
+                stage="failed",
+                message="Files were generated but no disk changes were detected.",
+                progress=100.0,
+            )
             return {
                 "pr_url": None,
                 "summary": "Files were generated but no disk changes detected.",
@@ -281,6 +317,12 @@ def run_agent(
 
         # 6. Push
         logger.info("Pushing branch '%s'", branch_name)
+        job_manager.add_event(
+            session_id=session_id,
+            stage="pushing",
+            message=f"Pushing branch '{branch_name}' to remote repository...",
+            progress=90.0,
+        )
         push_branch(git_repo, branch_name=branch_name)
 
         # 7. Build diff summary
@@ -309,6 +351,12 @@ def run_agent(
         )
 
         logger.info("Opening PR on %s", repo_full_name)
+        job_manager.add_event(
+            session_id=session_id,
+            stage="pr_opening",
+            message=f"Opening Pull Request: '{pr_title}'...",
+            progress=95.0,
+        )
         pr = create_pull_request(
             token=settings.github_token,
             repo_full_name=repo_full_name,
@@ -328,6 +376,13 @@ def run_agent(
                 "session_id": session_id,
                 "duration_ms": round(runner_duration_sec * 1000, 2),
             },
+        )
+        job_manager.add_event(
+            session_id=session_id,
+            stage="completed",
+            message=f"Pull Request created successfully! {pr.html_url}",
+            progress=100.0,
+            data={"pr_url": pr.html_url, "diff_summary": diff_summary_text},
         )
         return {
             "pr_url": pr.html_url,
