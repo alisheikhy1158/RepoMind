@@ -8,6 +8,8 @@ from api.errors import JobNotFoundError
 from api.main import app
 from api.schemas import JobStatus, RunRequest
 from config.settings import get_settings
+from tools.agent_runner import validate_credentials
+from tools.github_tool import _redact_secret
 from utils.job_manager import job_manager
 
 # This TestClient uses httpx under the hood to fake web requests!
@@ -97,3 +99,103 @@ def test_api_error_handling():
     # Test Job Not Found (Should return 404 Not Found)
     bad_status_resp = client.get("/status/fake_12345")
     assert bad_status_resp.status_code == 404
+
+
+def test_run_request_masks_credentials():
+    """Credentials in RunRequest must never appear in str()/repr() output."""
+    req = RunRequest(
+        repo_url="https://github.com/QuantumLogicsLabs/RepoMind",
+        instruction="Fix bugs",
+        github_pat="ghp_supersecrettoken123",
+        llm_provider="groq",
+        llm_api_key="gsk_supersecretkey456",
+    )
+
+    rendered = str(req)
+    assert "ghp_supersecrettoken123" not in rendered
+    assert "gsk_supersecretkey456" not in rendered
+    # The real value must still be retrievable when explicitly requested
+    assert req.github_pat.get_secret_value() == "ghp_supersecrettoken123"
+    assert req.llm_api_key.get_secret_value() == "gsk_supersecretkey456"
+
+
+def test_run_request_credentials_are_optional():
+    """Existing callers that don't supply credentials must still work."""
+    req = RunRequest(
+        repo_url="https://github.com/QuantumLogicsLabs/RepoMind",
+        instruction="Fix bugs",
+    )
+    assert req.github_pat is None
+    assert req.llm_api_key is None
+    assert req.llm_provider is None
+
+
+def test_resolve_github_token_prefers_request_scoped_value():
+    """A request-scoped token must override the server default."""
+    from pydantic import SecretStr
+
+    settings = get_settings()
+    request_token = SecretStr("ghp_request_scoped_token")
+
+    resolved = settings.resolve_github_token(request_token)
+    assert resolved == "ghp_request_scoped_token"
+
+
+def test_resolve_llm_credentials_prefers_request_scoped_value():
+    """A request-scoped LLM key/provider must override the server default."""
+    from pydantic import SecretStr
+
+    settings = get_settings()
+    provider, key = settings.resolve_llm_credentials("groq", SecretStr("gsk_request_key"))
+
+    assert provider == "groq"
+    assert key == "gsk_request_key"
+
+
+def test_resolve_llm_credentials_rejects_unsupported_provider():
+    """An unrecognised provider name must raise, not silently fall through."""
+    from pydantic import SecretStr
+
+    settings = get_settings()
+    with pytest.raises(ValueError):
+        settings.resolve_llm_credentials("not_a_real_provider", SecretStr("some_key"))
+
+
+def test_redact_secret_removes_token_from_text():
+    """_redact_secret must replace every occurrence of the secret, and be a no-op for empty secrets."""
+    text = "Cloning https://ghp_abc123@github.com/foo/bar.git failed"
+    redacted = _redact_secret(text, "ghp_abc123")
+
+    assert "ghp_abc123" not in redacted
+    assert "***REDACTED***" in redacted
+    # No secret supplied → text passes through unchanged
+    assert _redact_secret(text, None) == text
+    assert _redact_secret(text, "") == text
+
+
+@patch("tools.agent_runner.requests.get")
+def test_validate_credentials_rejects_invalid_github_token(mock_get):
+    """validate_credentials must raise a clear ValueError on a 401 from GitHub, without a real API call."""
+    mock_get.return_value.status_code = 401
+
+    with pytest.raises(ValueError, match="GitHub token is invalid or expired"):
+        validate_credentials(
+            github_token="not_a_real_token",
+            llm_provider="groq",
+            llm_api_key="not_a_real_key",
+        )
+
+
+@patch("tools.agent_runner.ChatGroq")
+@patch("tools.agent_runner.requests.get")
+def test_validate_credentials_passes_with_valid_mocked_credentials(mock_get, mock_chat_groq):
+    """validate_credentials must not raise when both GitHub and LLM checks succeed."""
+    mock_get.return_value.status_code = 200
+    mock_chat_groq.return_value.invoke.return_value = "pong"
+
+    # Should not raise
+    validate_credentials(
+        github_token="fake_but_valid_looking_token",
+        llm_provider="groq",
+        llm_api_key="fake_but_valid_looking_key",
+    )

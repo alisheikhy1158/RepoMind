@@ -40,12 +40,16 @@ def process_job(job_id: str) -> None:
         job = job_manager.get(job_id)
         job_manager.update(job_id, status=JobStatus.running)
 
+        # Request-scoped credentials (if the caller supplied any) were stashedon the job record by run().
         result = run_agent(
             repo_url=job.repo_url,
             instruction=job.instruction,
             session_id=job_id,  # session_id == job_id → memory persists across /refine
             branch_name=getattr(job, "branch_name", "repomind/auto-fix"),
             pr_title_override=getattr(job, "pr_title", None),
+            github_pat=getattr(job, "github_pat", None),
+            llm_provider_override=getattr(job, "llm_provider", None),
+            llm_api_key=getattr(job, "llm_api_key", None),
         )
 
         pr_url = result.get("pr_url")
@@ -76,6 +80,8 @@ def process_job(job_id: str) -> None:
             )
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         logger.error(
             "Job execution failed with unhandled exception",
             exc_info=e,
@@ -102,10 +108,14 @@ async def run(request: RunRequest, background_tasks: BackgroundTasks) -> RunResp
         repo_url=request.repo_url,
         instruction=request.instruction,
     )
-    # Stash branch_name and pr_title on the job record so process_job can read them.
+    # Stash branch_name, pr_title, and any request-scoped credentials on the job record so process_job can read them.
+    # Credentials are unwrapped from SecretStr to plain strings only here, right before being handed to the background task
     record = job_manager.get(job_id)
-    record.branch_name = request.branch_name  # type: ignore[attr-defined]
-    record.pr_title = request.pr_title  # type: ignore[attr-defined]
+    record.branch_name = request.branch_name
+    record.pr_title = request.pr_title
+    record.github_pat = request.github_pat.get_secret_value() if request.github_pat else None
+    record.llm_provider = request.llm_provider
+    record.llm_api_key = request.llm_api_key.get_secret_value() if request.llm_api_key else None
 
     background_tasks.add_task(process_job, job_id)
     return RunResponse(job_id=job_id, status=JobStatus.queued)
