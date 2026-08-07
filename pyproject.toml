@@ -40,6 +40,7 @@ packages = ["api", "agent", "config", "prompts", "tools"]
 
 [tool.black]
 line-length = 100
+target-version = ["py311"]
 extend-exclude = """
 /(
   website
