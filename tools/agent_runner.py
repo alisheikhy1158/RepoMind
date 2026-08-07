@@ -279,7 +279,7 @@ def run_agent(
         # 1. Clone
         logger.info("Cloning %s into %s", repo_url, repo_path)
         job_manager.add_event(
-            session_id=session_id,
+            job_id=session_id,
             stage="cloning",
             message=f"Cloning repository {repo_url}...",
             progress=10.0,
@@ -293,7 +293,7 @@ def run_agent(
         # 2. Parse repo files intelligently
         logger.info("Parsing repository files")
         job_manager.add_event(
-            session_id=session_id,
+            job_id=session_id,
             stage="parsing",
             message="Analyzing repository files and building project map...",
             progress=25.0,
@@ -328,7 +328,7 @@ def run_agent(
         # 4. Run AgentChain
         logger.info("Running AgentChain for session %s", session_id)
         job_manager.add_event(
-            session_id=session_id,
+            job_id=session_id,
             stage="planning",
             message="Generating execution plan with TaskPlanner...",
             progress=40.0,
@@ -343,7 +343,7 @@ def run_agent(
         if not result.execution.all_file_changes and not readme_generated:
             logger.warning("Agent produced no file changes for session %s", session_id)
             job_manager.add_event(
-                session_id=session_id,
+                job_id=session_id,
                 stage="failed",
                 message="Agent completed execution but produced no file changes.",
                 progress=100.0,
@@ -357,7 +357,7 @@ def run_agent(
         # 5. Create branch + commit
         logger.info("Creating branch '%s'", branch_name)
         job_manager.add_event(
-            session_id=session_id,
+            job_id=session_id,
             stage="committing",
             message=f"Creating branch '{branch_name}' and committing file changes...",
             progress=85.0,
@@ -369,7 +369,7 @@ def run_agent(
         if commit_sha is None:
             logger.warning("Nothing to commit — all writes may have been no-ops.")
             job_manager.add_event(
-                session_id=session_id,
+                job_id=session_id,
                 stage="failed",
                 message="Files were generated but no disk changes were detected.",
                 progress=100.0,
@@ -383,7 +383,7 @@ def run_agent(
         # 6. Push
         logger.info("Pushing branch '%s'", branch_name)
         job_manager.add_event(
-            session_id=session_id,
+            job_id=session_id,
             stage="pushing",
             message=f"Pushing branch '{branch_name}' to remote repository...",
             progress=90.0,
@@ -417,7 +417,7 @@ def run_agent(
 
         logger.info("Opening PR on %s", repo_full_name)
         job_manager.add_event(
-            session_id=session_id,
+            job_id=session_id,
             stage="pr_opening",
             message=f"Opening Pull Request: '{pr_title}'...",
             progress=95.0,
@@ -443,7 +443,7 @@ def run_agent(
             },
         )
         job_manager.add_event(
-            session_id=session_id,
+            job_id=session_id,
             stage="completed",
             message=f"Pull Request created successfully! {pr.html_url}",
             progress=100.0,
