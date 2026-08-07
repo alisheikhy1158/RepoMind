@@ -11,6 +11,7 @@ class JobRecord:
     status: str = "queued"
     pr_url: str | None = None
     diff_summary: str | None = None
+    diff: str | None = None 
     error_message: str | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     started_at: datetime | None = None
@@ -39,6 +40,7 @@ class JobRecord:
             "status": self.status,
             "pr_url": self.pr_url,
             "diff_summary": self.diff_summary,
+            "diff": self.diff,
             "error_message": self.error_message,
             "created_at": self.created_at.isoformat(),
             "started_at": self.started_at.isoformat() if self.started_at else None,
@@ -75,6 +77,7 @@ class JobManager:
         status: str | None = None,
         pr_url: str | None = None,
         diff_summary: str | None = None,
+        diff: str | None = None,
         error_message: str | None = None,
     ) -> None:
         record = self.get(job_id)

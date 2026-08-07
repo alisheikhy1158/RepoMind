@@ -58,6 +58,7 @@ def process_job(job_id: str) -> None:
                 status=JobStatus.completed,
                 pr_url=pr_url,
                 diff_summary=result.get("summary"),
+                diff=result.get("diff"),
             )
         else:
             # Agent ran successfully but produced no changes.
@@ -113,6 +114,7 @@ async def status(job_id: str) -> JobStatusResponse:
         status=JobStatus(job.status),
         pr_url=job.pr_url,
         diff_summary=job.diff_summary,
+        diff=job.diff,
         error_message=job.error_message,
     )
 
