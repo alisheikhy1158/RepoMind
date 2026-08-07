@@ -1,9 +1,17 @@
 import asyncio
 import json
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, BackgroundTasks, Header, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Header,
+    Query,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.responses import StreamingResponse
 
 from api.errors import (
@@ -81,6 +89,7 @@ def process_job(job_id: str) -> None:
 
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         logger.error(
             "Job execution failed with unhandled exception",
@@ -188,7 +197,7 @@ async def stream_job_progress(
                     if event.get("stage") in ("completed", "failed"):
                         yield f"event: close\ndata: {json.dumps({'job_id': job_id, 'status': event['stage']})}\n\n"
                         break
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     # Keep-alive ping
                     yield ": keep-alive\n\n"
                     if job.status in ("completed", "failed") and queue.empty():
@@ -234,7 +243,7 @@ async def websocket_job_progress(websocket: WebSocket, job_id: str):
 
                 if event.get("stage") in ("completed", "failed"):
                     break
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 if job.status in ("completed", "failed") and queue.empty():
                     break
     except WebSocketDisconnect:
@@ -278,4 +287,3 @@ async def metrics() -> dict:
     from utils.metrics import metrics_collector
 
     return metrics_collector.get_metrics_summary()
-

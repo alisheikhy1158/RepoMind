@@ -36,6 +36,7 @@ from tools.github_tool import (
     push_branch,
 )
 from tools.pr_tool import build_pr_body, build_pr_title, create_pull_request
+from utils.job_manager import job_manager
 from utils.logging import get_logger
 from utils.metrics import metrics_collector
 

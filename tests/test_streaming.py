@@ -1,5 +1,5 @@
-import pytest
 from fastapi.testclient import TestClient
+
 from api.main import app
 from utils.job_manager import job_manager
 

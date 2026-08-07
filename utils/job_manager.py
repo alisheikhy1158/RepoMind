@@ -2,7 +2,6 @@ import asyncio
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import AsyncGenerator
 
 from utils.logging import get_logger
 from utils.metrics import metrics_collector
@@ -240,4 +239,3 @@ class JobManager:
 
 
 job_manager = JobManager()
-
