@@ -2,6 +2,11 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
+from utils.logging import get_logger
+from utils.metrics import metrics_collector
+
+logger = get_logger("utils.job_manager")
+
 
 @dataclass
 class JobRecord:
@@ -59,6 +64,16 @@ class JobManager:
             instruction=instruction,
         )
         self._store[job_id] = record
+        metrics_collector.record_job_created()
+        logger.info(
+            "Job created",
+            extra={
+                "event": "job_created",
+                "job_id": job_id,
+                "repo_url": repo_url,
+                "instruction": instruction,
+            },
+        )
         return job_id
 
     def get(self, job_id: str) -> JobRecord:
@@ -66,6 +81,10 @@ class JobManager:
 
         record = self._store.get(job_id)
         if record is None:
+            logger.warning(
+                "Job lookup failed - not found",
+                extra={"event": "job_not_found", "job_id": job_id},
+            )
             raise JobNotFoundError(job_id)
         return record
 
@@ -78,6 +97,7 @@ class JobManager:
         error_message: str | None = None,
     ) -> None:
         record = self.get(job_id)
+        old_status = record.status
 
         if status is not None:
             record.status = status
@@ -96,6 +116,20 @@ class JobManager:
 
         if status in ("completed", "failed"):
             record.finished_at = datetime.now(UTC)
+
+        metrics_collector.record_job_status_change(old_status, record.status)
+        logger.info(
+            f"Job updated: {old_status} -> {record.status}",
+            extra={
+                "event": "job_status_change",
+                "job_id": job_id,
+                "old_status": old_status,
+                "new_status": record.status,
+                "pr_url": record.pr_url,
+                "elapsed_time": record.elapsed_time(),
+                "error_message": record.error_message,
+            },
+        )
 
     def all_jobs(self) -> dict:
         return {job_id: record.to_dict() for job_id, record in self._store.items()}

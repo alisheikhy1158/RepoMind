@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import ast
 import json
-import logging
 import tomllib
 from pathlib import Path
 from typing import Any
 
-# 1. Setup Logger for Token Profiling
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from utils.logging import get_logger
+
+logger = get_logger("tools.code_parser")
 
 DEFAULT_IGNORED_DIRS = {
     ".git",

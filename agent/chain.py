@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -11,6 +12,10 @@ from agent.memory import MemoryManager
 from agent.planner import Plan, TaskPlanner
 from prompts.system_prompt import SYSTEM_PROMPT
 from tools.code_parser import analyze_plan_impact
+from utils.logging import get_logger
+from utils.metrics import metrics_collector
+
+logger = get_logger("agent.chain")
 
 
 @dataclass
@@ -74,6 +79,15 @@ class AgentChain:
         project_map: dict[str, Any] | None = None,
     ) -> ChainResult:
         """Execute one full agent turn while supplying structured repository intelligence."""
+        chain_start_time = time.perf_counter()
+        logger.info(
+            "Starting agent chain run",
+            extra={
+                "event": "chain_start",
+                "session_id": session_id,
+                "instruction": instruction,
+            },
+        )
         self.memory.append_user_message(session_id, instruction)
 
         raw_context = self.memory.get_context_messages(session_id)
@@ -96,6 +110,21 @@ class AgentChain:
 
         summary = self._build_summary(plan, execution)
         self.memory.append_ai_message(session_id, summary)
+
+        chain_duration_sec = time.perf_counter() - chain_start_time
+        metrics_collector.record_duration("chain_duration_seconds", chain_duration_sec)
+
+        logger.info(
+            "Agent chain run completed",
+            extra={
+                "event": "chain_complete",
+                "session_id": session_id,
+                "planned_steps": len(plan.steps),
+                "executed_steps": len(execution.results),
+                "total_file_changes": len(execution.all_file_changes),
+                "duration_ms": round(chain_duration_sec * 1000, 2),
+            },
+        )
 
         return ChainResult(
             session_id=session_id,

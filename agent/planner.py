@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -8,6 +9,10 @@ from langchain_core.runnables import Runnable
 from pydantic import BaseModel, Field, field_validator
 
 from tools.code_parser import summarize_project_map
+from utils.logging import get_logger
+from utils.metrics import metrics_collector
+
+logger = get_logger("agent.planner")
 
 MAX_PLAN_STEPS = 10
 
@@ -165,8 +170,18 @@ class TaskPlanner:
         Returns:
             A Plan with at most MAX_PLAN_STEPS steps, each fully specified.
         """
+        start_time = time.perf_counter()
+        logger.info(
+            "Generating execution plan",
+            extra={
+                "event": "planner_start",
+                "instruction_len": len(instruction),
+                "has_project_map": project_map is not None,
+                "context_msg_count": len(context_messages),
+            },
+        )
         chain = self.build_chain()
-        return chain.invoke(
+        generated_plan: Plan = chain.invoke(
             {
                 "instruction": instruction,
                 "context": self._context_to_text(context_messages),
@@ -175,3 +190,16 @@ class TaskPlanner:
                 "max_context_msgs": 12,
             }
         )
+        duration_sec = time.perf_counter() - start_time
+        metrics_collector.record_plan_generated(len(generated_plan.steps))
+        metrics_collector.record_duration("planner_duration_seconds", duration_sec)
+        logger.info(
+            "Execution plan generated successfully",
+            extra={
+                "event": "planner_complete",
+                "step_count": len(generated_plan.steps),
+                "duration_ms": round(duration_sec * 1000, 2),
+                "steps": [s.task for s in generated_plan.steps],
+            },
+        )
+        return generated_plan
