@@ -48,7 +48,7 @@ def process_job(job_id: str) -> None:
         job = job_manager.get(job_id)
         job_manager.update(job_id, status=JobStatus.running)
 
-        # Request-scoped credentials (if the caller supplied any) were stashedon the job record by run().
+        # Request-scoped credentials (if the caller supplied any) were stashed on the job record by run().
         result = run_agent(
             repo_url=job.repo_url,
             instruction=job.instruction,
@@ -68,6 +68,7 @@ def process_job(job_id: str) -> None:
                 status=JobStatus.completed,
                 pr_url=pr_url,
                 diff_summary=result.get("summary"),
+                diff=result.get("diff"),
             )
         else:
             # Agent ran successfully but produced no changes.
@@ -88,9 +89,7 @@ def process_job(job_id: str) -> None:
             )
 
     except Exception as e:
-        import traceback
 
-        traceback.print_exc()
         logger.error(
             "Job execution failed with unhandled exception",
             exc_info=e,
@@ -142,6 +141,7 @@ async def status(job_id: str) -> JobStatusResponse:
         status=JobStatus(job.status),
         pr_url=job.pr_url,
         diff_summary=job.diff_summary,
+        diff=job.diff,
         error_message=job.error_message,
     )
 

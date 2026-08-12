@@ -453,4 +453,5 @@ def run_agent(
             "pr_url": pr.html_url,
             "summary": diff_summary_text,
             "diff_summary": diff_summary_text,
+            "diff": "\n\n".join(per_file_diffs.values()),
         }
