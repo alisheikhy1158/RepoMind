@@ -43,7 +43,6 @@ RepoMind lives as a **separate, independently deployable ML service**. It is int
 │  │        RepoMind  (this repo)    │            │
 │  │  FastAPI · LangChain · GitHub   │            │
 │  └─────────────────────────────────┘            │
-<<<<<<< HEAD
 │         │                                       │
 │         ▼                                       │
 │     GitHub PR created automatically             │
@@ -342,9 +341,4 @@ Please follow [Conventional Commits](https://www.conventionalcommits.org/) for c
 This software is licensed under the [HackingTheRepo Proprietary Software License Agreement (PPSLA v1.0)](LICENSE).
 
 Copyright © 2025 QuantumLogics Incorporated. All Rights Reserved. Unauthorized use, reproduction, modification, or distribution is strictly prohibited.
-=======
-│        │                                        │
-│        ▼                                        │
-│    GitHub PR created automatically              │
-└─────────────────────────────────────────────────┘
->>>>>>> 06a2318 (Migrate project completely from OpenAI to Groq and clean generated files)
+

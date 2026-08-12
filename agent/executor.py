@@ -216,7 +216,7 @@ class StepExecutor:
 
     # ── Main execution loop ──────────────────────────────────────────────────
 
-    def execute(self, plan: Plan) -> ExecutorOutput:
+    def execute(self, plan: Plan, session_id: str | None = None) -> ExecutorOutput:
         """
         Iterate over plan steps, call a tool per step, and collect FileChange objects.
 
@@ -224,6 +224,8 @@ class StepExecutor:
         the executor moves on to the next step.  The retry is logged so it is
         visible in the job summary.
         """
+        from utils.job_manager import job_manager
+
         results: list[StepExecutionResult] = []
         all_changes: list[FileChange] = []
         exec_start_time = time.perf_counter()
@@ -233,9 +235,20 @@ class StepExecutor:
             extra={"event": "executor_start", "total_steps": len(plan.steps)},
         )
 
-        for step in plan.steps:
+        total_steps = len(plan.steps) or 1
+        for idx, step in enumerate(plan.steps, start=1):
             step_start_time = time.perf_counter()
             previous_summary = "\n".join([f"Step {r.step_id}: {r.notes}" for r in results])
+
+            if session_id:
+                calc_progress = round(45.0 + (idx / total_steps) * 35.0, 2)
+                job_manager.add_event(
+                    job_id=session_id,
+                    stage="executing_step",
+                    message=f"Executing step {idx}/{total_steps}: {step.task}",
+                    progress=calc_progress,
+                    data={"step_id": step.id, "task": step.task},
+                )
 
             # ── 1. Choose tool ───────────────────────────────────────────────
             decision = self._decide_tool(step, previous_summary)

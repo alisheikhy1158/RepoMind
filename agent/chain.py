@@ -103,7 +103,7 @@ class AgentChain:
         self.memory.set_plan(session_id, [s.task for s in plan.steps])
 
         self._inject_memory_context(context_with_system)
-        execution = self.executor.execute(plan)
+        execution = self.executor.execute(plan, session_id=session_id)
 
         for result in execution.results:
             self.memory.mark_step_completed(session_id, result.step_task)
