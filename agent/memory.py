@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from dataclasses import dataclass, field
 
 from langchain_core.chat_history import InMemoryChatMessageHistory
@@ -26,15 +27,22 @@ def _estimate_message_tokens(message: BaseMessage) -> int:
 
 
 class MemoryManager:
-    """Manages per-session conversation + lightweight task memory with smart token trimming."""
+    """Manages per-session conversation + lightweight task memory with smart token trimming.
+
+    Thread-safe: a lock guards session creation/lookup so concurrent
+    batch jobs (different session_ids running in parallel threads) cannot
+    race on the underlying dict.
+    """
 
     def __init__(self) -> None:
         self._sessions: dict[str, SessionState] = {}
+        self._lock = threading.Lock()
 
     def get_or_create(self, session_id: str) -> SessionState:
-        if session_id not in self._sessions:
-            self._sessions[session_id] = SessionState(session_id=session_id)
-        return self._sessions[session_id]
+        with self._lock:
+            if session_id not in self._sessions:
+                self._sessions[session_id] = SessionState(session_id=session_id)
+            return self._sessions[session_id]
 
     def get_history(self, session_id: str) -> InMemoryChatMessageHistory:
         return self.get_or_create(session_id).history
@@ -66,8 +74,9 @@ class MemoryManager:
         }
 
     def clear_session(self, session_id: str) -> None:
-        if session_id in self._sessions:
-            del self._sessions[session_id]
+        with self._lock:
+            if session_id in self._sessions:
+                del self._sessions[session_id]
 
     def get_context_messages(
         self,

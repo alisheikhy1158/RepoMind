@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import tempfile
 import time
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import requests
@@ -399,3 +400,144 @@ def run_agent(
             "diff_summary": diff_summary_text,
             "diff": "\n\n".join(per_file_diffs.values()),
         }
+
+
+def run_agent_batch(
+    repos: list[dict],
+    session_id_prefix: str,
+    max_workers: int = 4,
+    base_branch: str = "main",
+) -> dict:
+    """
+    Run the agent against multiple repositories concurrently.
+
+    Each repo is processed independently via run_agent(), on its own thread,
+    with its own isolated temp directory (already guaranteed by run_agent's
+    use of tempfile.TemporaryDirectory) and its own session_id (so agent
+    memory does not cross-contaminate between repos, even under concurrent
+    execution — see MemoryManager's per-session locking).
+
+    A failure in one repo does not stop or affect the others: each result
+    is captured independently and the batch always returns a complete
+    per-repo breakdown, never raises for an individual repo's failure.
+
+    Args:
+        repos: List of dicts, each with:
+            - "repo_url" (str, required)
+            - "instruction" (str, required)
+            - "branch_name" (str, optional)
+            - "pr_title_override" (str, optional)
+            - "github_pat" (str, optional)
+            - "llm_provider_override" (str, optional)
+            - "llm_api_key" (str, optional)
+        session_id_prefix: Prefix used to build a unique session_id per repo,
+            e.g. "batch-<batch_id>". Each repo gets "<prefix>-<index>".
+        max_workers: Maximum number of repos processed concurrently.
+        base_branch: Base branch for all PRs in this batch (applies to every
+            repo unless overridden per-repo in the future).
+
+    Returns:
+        {
+            "total": int,
+            "succeeded": int,
+            "failed": int,
+            "results": [
+                {
+                    "repo_url": str,
+                    "session_id": str,
+                    "status": "completed" | "failed",
+                    "pr_url": str | None,
+                    "summary": str,
+                    "error_message": str | None,
+                },
+                ...
+            ],
+        }
+    """
+    batch_start_time = time.perf_counter()
+    logger.info(
+        "Starting batch agent run",
+        extra={"event": "batch_run_start", "repo_count": len(repos)},
+    )
+
+    def _run_one(index: int, repo_spec: dict) -> dict:
+        """Run a single repo's job and normalise the outcome into a dict,
+        catching any exception so it never propagates out of the thread.
+        """
+        repo_url = repo_spec["repo_url"]
+        instruction = repo_spec["instruction"]
+        session_id = f"{session_id_prefix}-{index}"
+
+        try:
+            result = run_agent(
+                repo_url=repo_url,
+                instruction=instruction,
+                session_id=session_id,
+                branch_name=repo_spec.get("branch_name", "repomind/auto-fix"),
+                pr_title_override=repo_spec.get("pr_title_override"),
+                base_branch=base_branch,
+                github_pat=repo_spec.get("github_pat"),
+                llm_provider_override=repo_spec.get("llm_provider_override"),
+                llm_api_key=repo_spec.get("llm_api_key"),
+            )
+            pr_url = result.get("pr_url")
+            return {
+                "repo_url": repo_url,
+                "session_id": session_id,
+                "status": "completed" if pr_url else "failed",
+                "pr_url": pr_url,
+                "summary": result.get("summary", ""),
+                "error_message": None if pr_url else result.get("summary"),
+            }
+        except Exception as exc:
+            logger.error(
+                "Batch item failed",
+                exc_info=exc,
+                extra={
+                    "event": "batch_item_failed",
+                    "repo_url": repo_url,
+                    "session_id": session_id,
+                    "exception_type": type(exc).__name__,
+                },
+            )
+            metrics_collector.record_failure(f"BatchItemException:{type(exc).__name__}", str(exc))
+            return {
+                "repo_url": repo_url,
+                "session_id": session_id,
+                "status": "failed",
+                "pr_url": None,
+                "summary": "",
+                "error_message": str(exc),
+            }
+
+    results: list[dict] = [None] * len(repos)  # type: ignore[list-item]
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_index: dict[Future, int] = {
+            executor.submit(_run_one, i, repo_spec): i for i, repo_spec in enumerate(repos)
+        }
+        for future in as_completed(future_to_index):
+            index = future_to_index[future]
+            results[index] = future.result()
+
+    succeeded = sum(1 for r in results if r["status"] == "completed")
+    failed = len(results) - succeeded
+
+    batch_duration_sec = time.perf_counter() - batch_start_time
+    metrics_collector.record_duration("run_agent_batch_duration_seconds", batch_duration_sec)
+    logger.info(
+        "Batch agent run completed",
+        extra={
+            "event": "batch_run_complete",
+            "total": len(results),
+            "succeeded": succeeded,
+            "failed": failed,
+            "duration_ms": round(batch_duration_sec * 1000, 2),
+        },
+    )
+
+    return {
+        "total": len(results),
+        "succeeded": succeeded,
+        "failed": failed,
+        "results": results,
+    }
