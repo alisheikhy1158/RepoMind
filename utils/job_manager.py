@@ -11,7 +11,7 @@ class JobRecord:
     status: str = "queued"
     pr_url: str | None = None
     diff_summary: str | None = None
-    diff: str | None = None 
+    diff: str | None = None
     error_message: str | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     started_at: datetime | None = None

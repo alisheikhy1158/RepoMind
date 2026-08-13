@@ -60,7 +60,7 @@ class JobStatusResponse(BaseModel):
         None  # GitHub PR URL — only set when status = completed AND a real PR was created
     )
     diff_summary: str | None = None  # e.g. "Modified 3 files"
-    diff: str | None = None   # Raw unified diff (git diff format), when available
+    diff: str | None = None  # Raw unified diff (git diff format), when available
     error_message: str | None = None  # Set when status = failed
     # Keep 'message' as an alias so existing callers don't break
     message: str | None = None
