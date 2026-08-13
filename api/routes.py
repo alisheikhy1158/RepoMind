@@ -2,10 +2,22 @@
 FastAPI Routes for RepoMind Agent System
 """
 
+import asyncio
+import json
 import uuid
+from collections.abc import AsyncGenerator
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, BackgroundTasks
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Header,
+    Query,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+)
+from fastapi.responses import StreamingResponse
 
 from api.errors import (
     InvalidInstructionError,
@@ -88,6 +100,7 @@ def process_job(job_id: str) -> None:
             )
 
     except Exception as e:
+
         logger.error(
             "Job execution failed with unhandled exception",
             exc_info=e,
@@ -185,6 +198,112 @@ async def status(job_id: str) -> JobStatusResponse:
         diff=job.diff,
         error_message=job.error_message,
     )
+
+
+@router.get("/stream/{job_id}")
+async def stream_job_progress(
+    job_id: str,
+    request: Request,
+    last_event_id: int | None = Query(None),
+    last_event_id_header: str | None = Header(None, alias="Last-Event-ID"),
+) -> StreamingResponse:
+    """
+    Stream live execution progress via Server-Sent Events (SSE).
+
+    Supports client reconnects via Last-Event-ID header or query parameter.
+    """
+    try:
+        job = job_manager.get(job_id)
+    except Exception:
+        raise JobNotFoundError(job_id) from None
+
+    parsed_last_id: int | None = None
+    if last_event_id is not None:
+        parsed_last_id = last_event_id
+    elif last_event_id_header:
+        try:
+            parsed_last_id = int(last_event_id_header)
+        except ValueError:
+            parsed_last_id = None
+
+    queue, missed_events = job_manager.subscribe(job_id, last_event_id=parsed_last_id)
+
+    async def sse_generator() -> AsyncGenerator[str, None]:
+        try:
+            # 1. Play back any missed historical events (reconnect catch-up)
+            for event in missed_events:
+                yield f"id: {event['id']}\nevent: progress\ndata: {json.dumps(event)}\n\n"
+
+            # Check if job was already completed/failed before new events
+            if job.status in ("completed", "failed") and queue.empty():
+                yield f"event: close\ndata: {json.dumps({'job_id': job_id, 'status': job.status})}\n\n"
+                return
+
+            # 2. Stream new live events as they occur
+            while True:
+                if await request.is_disconnected():
+                    break
+
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=1.0)
+                    yield f"id: {event['id']}\nevent: progress\ndata: {json.dumps(event)}\n\n"
+
+                    if event.get("stage") in ("completed", "failed"):
+                        yield f"event: close\ndata: {json.dumps({'job_id': job_id, 'status': event['stage']})}\n\n"
+                        break
+                except TimeoutError:
+                    # Keep-alive ping
+                    yield ": keep-alive\n\n"
+                    if job.status in ("completed", "failed") and queue.empty():
+                        yield f"event: close\ndata: {json.dumps({'job_id': job_id, 'status': job.status})}\n\n"
+                        break
+
+        finally:
+            job_manager.unsubscribe(job_id, queue)
+
+    return StreamingResponse(
+        sse_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.websocket("/ws/jobs/{job_id}")
+async def websocket_job_progress(websocket: WebSocket, job_id: str):
+    """
+    Stream live execution progress via WebSockets.
+    """
+    try:
+        job = job_manager.get(job_id)
+    except Exception:
+        await websocket.close(code=4004, reason="Job not found")
+        return
+
+    await websocket.accept()
+    queue, missed_events = job_manager.subscribe(job_id, last_event_id=0)
+
+    try:
+        for event in missed_events:
+            await websocket.send_json(event)
+
+        while True:
+            try:
+                event = await asyncio.wait_for(queue.get(), timeout=1.0)
+                await websocket.send_json(event)
+
+                if event.get("stage") in ("completed", "failed"):
+                    break
+            except TimeoutError:
+                if job.status in ("completed", "failed") and queue.empty():
+                    break
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket client disconnected from job {job_id}")
+    finally:
+        job_manager.unsubscribe(job_id, queue)
 
 
 @router.post("/refine", response_model=RefineResponse)
