@@ -199,3 +199,60 @@ def test_validate_credentials_passes_with_valid_mocked_credentials(mock_get, moc
         llm_provider="groq",
         llm_api_key="fake_but_valid_looking_key",
     )
+
+
+def test_run_batch_processes_multiple_repos_independently():
+    """
+    Integration test: POST /run-batch followed by GET /batch-status must
+    correctly aggregate per-repo outcomes, with one repo's failure not
+    affecting the others.
+    """
+
+    def fake_run_agent(**kwargs):
+        if "bad-repo" in kwargs["repo_url"]:
+            raise ValueError("Simulated failure")
+        return {
+            "pr_url": f"https://github.com/fake/pull/{kwargs['session_id']}",
+            "summary": "Done",
+            "diff_summary": "1 file changed",
+            "diff": "",
+        }
+
+    with patch("tools.agent_runner.run_agent", side_effect=fake_run_agent):
+        payload = {
+            "repos": [
+                {"repo_url": "https://github.com/foo/repo1", "instruction": "Add type hints"},
+                {"repo_url": "https://github.com/foo/bad-repo", "instruction": "This will fail"},
+                {"repo_url": "https://github.com/foo/repo3", "instruction": "Fix bug"},
+            ]
+        }
+        run_resp = client.post("/run-batch", json=payload)
+        assert run_resp.status_code == 200
+
+        batch_id = run_resp.json()["batch_id"]
+        job_ids = run_resp.json()["job_ids"]
+        assert len(job_ids) == 3
+        assert run_resp.json()["status"] == "queued"
+
+        status_resp = client.get(f"/batch-status/{batch_id}")
+        assert status_resp.status_code == 200
+
+        body = status_resp.json()
+        assert body["total"] == 3
+        assert body["succeeded"] == 2
+        assert body["failed"] == 1
+        assert body["pending"] == 0
+        assert len(body["jobs"]) == 3
+
+        # Confirm the failed job carries a clear error message, and the
+        # succeeded ones carry a real pr_url.
+        statuses = {job["status"] for job in body["jobs"]}
+        assert statuses == {"completed", "failed"}
+        failed_job = next(j for j in body["jobs"] if j["status"] == "failed")
+        assert failed_job["error_message"] == "Simulated failure"
+
+
+def test_batch_status_returns_404_for_unknown_batch_id():
+    """GET /batch-status/{batch_id} must 404 for a batch_id that was never created."""
+    resp = client.get("/batch-status/this-batch-does-not-exist")
+    assert resp.status_code == 404

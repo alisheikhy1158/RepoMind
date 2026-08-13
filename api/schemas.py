@@ -35,6 +35,37 @@ class RunRequest(BaseModel):
     llm_api_key: SecretStr | None = None  # Per-request LLM key, overrides server default
 
 
+class RepoJobSpec(BaseModel):
+    """One repository's job spec within a batch request."""
+
+    repo_url: str
+    instruction: str
+    branch_name: str = "repomind/auto-fix"
+    pr_title: str = "refactor: RepoMind automated change"
+    github_pat: SecretStr | None = None
+    llm_provider: str | None = None
+    llm_api_key: SecretStr | None = None
+
+
+class BatchRunRequest(BaseModel):
+    """
+    POST /run-batch
+    Run the agent across multiple repositories concurrently, each with its
+    own instruction.
+    """
+
+    repos: list[RepoJobSpec]
+    base_branch: str = "main"
+
+
+class BatchRunResponse(BaseModel):
+    """Returned immediately from POST /run-batch so the platform can start polling."""
+
+    batch_id: str
+    job_ids: list[str]
+    status: JobStatus  # Always "queued" on first response
+
+
 class RefineRequest(BaseModel):
     """
     POST /refine
@@ -64,6 +95,20 @@ class JobStatusResponse(BaseModel):
     error_message: str | None = None  # Set when status = failed
     # Keep 'message' as an alias so existing callers don't break
     message: str | None = None
+
+
+class BatchStatusResponse(BaseModel):
+    """
+    GET /batch-status/{batch_id}
+    Aggregated status snapshot across every job in the batch.
+    """
+
+    batch_id: str
+    total: int
+    succeeded: int
+    failed: int
+    pending: int
+    jobs: list[JobStatusResponse]
 
 
 class RunResponse(BaseModel):
