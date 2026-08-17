@@ -26,6 +26,7 @@ from pydantic import SecretStr
 from agent.chain import AgentChain
 from agent.executor import ToolSpec
 from agent.memory import MemoryManager
+from agent.plugin import plugin_manager
 from config.settings import get_settings
 from tools.code_parser import build_project_map, get_project_readme, parse_repository
 from tools.diff_generator import generate_repo_diff
@@ -315,7 +316,19 @@ def run_agent(
         repo_files_for_agent = project_map["files"]
         repo_files_before = repo_files_for_agent.copy()
 
-        # 3. Build LLM + tools
+        # 3. Discover and register plugins
+        if settings.plugins_dir:
+            plugin_manager.discover_plugins(settings.plugins_dir)
+        for ep in settings.enabled_plugins:
+            try:
+                if ep.endswith(".py"):
+                    plugin_manager.load_plugin_from_path(ep)
+                else:
+                    plugin_manager.load_plugin_by_name(ep)
+            except Exception as exc:
+                logger.error("Failed to load enabled plugin '%s': %s", ep, exc, exc_info=exc)
+
+        # 4. Build LLM + tools
         llm = ChatGroq(
             model=settings.llm_model,
             api_key=SecretStr(

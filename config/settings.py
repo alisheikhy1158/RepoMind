@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     app_env: str = "development"
     log_level: str = "INFO"
 
+    # ── Plugins ───────────────────────────────────────────────────────────────
+    plugins_dir: str = "plugins"
+    enabled_plugins: list[str] = []
+
     class Config:
         env_file = ".env"
         extra = "ignore"

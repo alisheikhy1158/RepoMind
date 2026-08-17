@@ -10,6 +10,7 @@ from langchain_core.messages import SystemMessage
 from agent.executor import ExecutorOutput, StepExecutor, ToolSpec
 from agent.memory import MemoryManager
 from agent.planner import Plan, TaskPlanner
+from agent.plugin import PluginManager, plugin_manager as default_plugin_manager
 from prompts.system_prompt import SYSTEM_PROMPT
 from tools.code_parser import analyze_plan_impact
 from utils.logging import get_logger
@@ -47,11 +48,23 @@ class AgentChain:
         llm: BaseChatModel,
         tools: list[ToolSpec],
         memory: MemoryManager | None = None,
+        plugin_mgr: PluginManager | None = None,
     ) -> None:
         self.llm = llm
         self.memory = memory or MemoryManager()
-        self.planner = TaskPlanner(llm=llm)
-        self.executor = StepExecutor(llm=llm, tools=tools)
+        self.plugin_manager = plugin_mgr or default_plugin_manager
+
+        # Merge base tools with custom plugin tools
+        plugin_tools = self.plugin_manager.get_all_tools() if self.plugin_manager else []
+        all_tools = list(tools) + list(plugin_tools)
+
+        # Merge plugin planner instructions
+        extra_instructions = (
+            self.plugin_manager.get_all_planner_instructions() if self.plugin_manager else []
+        )
+
+        self.planner = TaskPlanner(llm=llm, extra_instructions=extra_instructions)
+        self.executor = StepExecutor(llm=llm, tools=all_tools)
 
         # Build the system message once — it never changes between runs.
         self._system_message = SystemMessage(content=SYSTEM_PROMPT)
