@@ -10,7 +10,8 @@ from langchain_core.messages import SystemMessage
 from agent.executor import ExecutorOutput, StepExecutor, ToolSpec
 from agent.memory import MemoryManager
 from agent.planner import Plan, TaskPlanner
-from agent.plugin import PluginManager, plugin_manager as default_plugin_manager
+from agent.plugin import PluginManager
+from agent.plugin import plugin_manager as default_plugin_manager
 from prompts.system_prompt import SYSTEM_PROMPT
 from tools.code_parser import analyze_plan_impact
 from utils.logging import get_logger

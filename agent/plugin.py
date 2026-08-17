@@ -12,9 +12,10 @@ import importlib
 import importlib.util
 import inspect
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from agent.executor import ToolSpec
 from utils.logging import get_logger
