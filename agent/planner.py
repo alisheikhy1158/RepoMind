@@ -79,9 +79,7 @@ class TaskPlanner:
     and the expected observable output — so the executor never has to guess.
     """
 
-    def __init__(
-        self, llm: BaseChatModel, extra_instructions: list[str] | None = None
-    ) -> None:
+    def __init__(self, llm: BaseChatModel, extra_instructions: list[str] | None = None) -> None:
         self.llm = llm
         self.extra_instructions: list[str] = extra_instructions or []
         self._build_prompt()

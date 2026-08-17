@@ -138,9 +138,7 @@ class PluginManager:
     def __init__(self) -> None:
         self._plugins: dict[str, BasePlugin] = {}
 
-    def register_plugin(
-        self, plugin: BasePlugin, context: dict[str, Any] | None = None
-    ) -> None:
+    def register_plugin(self, plugin: BasePlugin, context: dict[str, Any] | None = None) -> None:
         """
         Register and initialize a plugin instance.
 
@@ -274,9 +272,7 @@ class PluginManager:
                 plugins = self.load_plugin_from_path(py_file, context=context)
                 discovered.extend(plugins)
             except Exception as e:
-                logger.error(
-                    "Failed to load plugin from file '%s': %s", py_file, e, exc_info=e
-                )
+                logger.error("Failed to load plugin from file '%s': %s", py_file, e, exc_info=e)
 
         return discovered
 
