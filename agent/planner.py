@@ -79,49 +79,57 @@ class TaskPlanner:
     and the expected observable output — so the executor never has to guess.
     """
 
-    def __init__(self, llm: BaseChatModel) -> None:
+    def __init__(self, llm: BaseChatModel, extra_instructions: list[str] | None = None) -> None:
         self.llm = llm
+        self.extra_instructions: list[str] = extra_instructions or []
+        self._build_prompt()
+
+    def _build_prompt(self) -> None:
+        plugin_section = ""
+        if self.extra_instructions:
+            formatted = "\n".join(f"- {inst}" for inst in self.extra_instructions)
+            plugin_section = f"\n\nADDITIONAL PLUGIN INSTRUCTIONS:\n{formatted}\n"
+
+        system_text = (
+            "You are a senior software engineer acting as a code-edit planner for the RepoMind AI agent.\n"
+            "\n"
+            "Your job is to decompose the user's instruction into an ordered list of CONCRETE implementation steps.\n"
+            "Each step will be executed independently by a code-generation LLM that has NO memory of previous steps.\n"
+            "Therefore every step must be 100 % self-contained and unambiguous.\n"
+            "\n"
+            "STRICT RULES:\n"
+            "1. MAXIMUM {max_steps} steps. If the task needs more, find the minimal subset that achieves the goal.\n"
+            "2. Every step MUST specify:\n"
+            "   - target_files: exact file path(s) relative to the repo root, e.g. 'agent/executor.py'\n"
+            "   - target_function: the exact function or class.method name to touch, e.g. 'StepExecutor.execute'\n"
+            "   - new_logic: a precise, line-level description of what code to add/change/remove inside that function\n"
+            "   - expected_output: a concrete observable result (not 'it works')\n"
+            "   - acceptance_criteria: how a test or reviewer can confirm the step is done\n"
+            "3. Prioritize repository intelligence from the project map: README.md, ARCHITECTURE.md, framework configs, dependency files, and entry points should be preferred over arbitrary source files when relevant.\n"
+            "4. NEVER produce vague steps like 'improve the prompt' or 'fix the bug'.\n"
+            "5. NEVER reference a file or function that doesn't exist in the repo without also creating it first.\n"
+            "6. Steps must be ordered: if step B depends on step A, A must come first.\n"
+            "7. Each step edits ONE logical unit (one function or one class). Split larger changes across multiple steps.\n"
+            "\n"
+            "BAD step (reject this pattern):\n"
+            "  task: 'Improve the executor'\n"
+            "  target_files: ['agent/']\n"
+            "  new_logic: 'Make it better'\n"
+            "\n"
+            "GOOD step (follow this pattern):\n"
+            "  task: 'Add retry logic to StepExecutor.execute when file_changes is empty'\n"
+            "  target_files: ['agent/executor.py']\n"
+            "  target_function: 'StepExecutor.execute'\n"
+            '  new_logic: \'After tool.fn() returns payload, check if payload["file_changes"] is empty. '
+            "If so, call tool.fn(decision.tool_input) a second time. Use the second result regardless.'\n"
+            "  expected_output: 'execute() calls the tool twice when the first call returns no file_changes'\n"
+            "  acceptance_criteria: 'Unit test patches tool.fn to return empty first, non-empty second; "
+            "asserts all_file_changes is non-empty'\n"
+        ) + plugin_section
+
         self.prompt = ChatPromptTemplate.from_messages(
             [
-                (
-                    "system",
-                    (
-                        "You are a senior software engineer acting as a code-edit planner for the RepoMind AI agent.\n"
-                        "\n"
-                        "Your job is to decompose the user's instruction into an ordered list of CONCRETE implementation steps.\n"
-                        "Each step will be executed independently by a code-generation LLM that has NO memory of previous steps.\n"
-                        "Therefore every step must be 100 % self-contained and unambiguous.\n"
-                        "\n"
-                        "STRICT RULES:\n"
-                        "1. MAXIMUM {max_steps} steps. If the task needs more, find the minimal subset that achieves the goal.\n"
-                        "2. Every step MUST specify:\n"
-                        "   - target_files: exact file path(s) relative to the repo root, e.g. 'agent/executor.py'\n"
-                        "   - target_function: the exact function or class.method name to touch, e.g. 'StepExecutor.execute'\n"
-                        "   - new_logic: a precise, line-level description of what code to add/change/remove inside that function\n"
-                        "   - expected_output: a concrete observable result (not 'it works')\n"
-                        "   - acceptance_criteria: how a test or reviewer can confirm the step is done\n"
-                        "3. Prioritize repository intelligence from the project map: README.md, ARCHITECTURE.md, framework configs, dependency files, and entry points should be preferred over arbitrary source files when relevant.\n"
-                        "4. NEVER produce vague steps like 'improve the prompt' or 'fix the bug'.\n"
-                        "5. NEVER reference a file or function that doesn't exist in the repo without also creating it first.\n"
-                        "6. Steps must be ordered: if step B depends on step A, A must come first.\n"
-                        "7. Each step edits ONE logical unit (one function or one class). Split larger changes across multiple steps.\n"
-                        "\n"
-                        "BAD step (reject this pattern):\n"
-                        "  task: 'Improve the executor'\n"
-                        "  target_files: ['agent/']\n"
-                        "  new_logic: 'Make it better'\n"
-                        "\n"
-                        "GOOD step (follow this pattern):\n"
-                        "  task: 'Add retry logic to StepExecutor.execute when file_changes is empty'\n"
-                        "  target_files: ['agent/executor.py']\n"
-                        "  target_function: 'StepExecutor.execute'\n"
-                        '  new_logic: \'After tool.fn() returns payload, check if payload["file_changes"] is empty. '
-                        "If so, call tool.fn(decision.tool_input) a second time. Use the second result regardless.'\n"
-                        "  expected_output: 'execute() calls the tool twice when the first call returns no file_changes'\n"
-                        "  acceptance_criteria: 'Unit test patches tool.fn to return empty first, non-empty second; "
-                        "asserts all_file_changes is non-empty'\n"
-                    ),
-                ),
+                ("system", system_text),
                 (
                     "human",
                     (
