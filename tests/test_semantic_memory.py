@@ -3,9 +3,6 @@
 Comprehensive tests for RepoMind persistent semantic memory system.
 """
 
-import os
-import shutil
-import tempfile
 import pytest
 
 from memory.models import MemoryCategory, RepositoryMemory
@@ -70,6 +67,7 @@ class TestVectorStore:
     @pytest.fixture
     def store(self, tmp_path):
         from memory.store import PersistentVectorStore
+
         return PersistentVectorStore(storage_dir=tmp_path)
 
     def test_repo_isolation(self, store):
@@ -148,6 +146,7 @@ class TestSemanticRetrieval:
 
     def test_composite_scoring_retrieval(self, store_and_retriever):
         from memory.retrieval import QueryContext
+
         store, retriever = store_and_retriever
         repo_id = "org/retrieval-test"
 
@@ -182,6 +181,7 @@ class TestSemanticRetrieval:
 
     def test_category_filtering(self, store_and_retriever):
         from memory.retrieval import QueryContext
+
         store, retriever = store_and_retriever
         repo_id = "org/cat-filter"
 
@@ -283,6 +283,7 @@ class TestPlannerIntegration:
     @pytest.fixture
     def memory_manager(self, tmp_path):
         from memory.manager import SemanticMemoryManager
+
         return SemanticMemoryManager(storage_dir=tmp_path)
 
     def test_format_memories_prompt_and_token_budget(self, memory_manager):
@@ -329,9 +330,8 @@ class TestPostExecutionMemory:
     @pytest.fixture
     def mock_llm_and_chain(self, tmp_path):
         from unittest.mock import MagicMock
+
         from agent.chain import AgentChain
-        from agent.executor import ExecutorOutput, FileChange, StepExecutionResult
-        from agent.planner import Plan, PlanStep
         from memory.manager import SemanticMemoryManager
 
         mock_llm = MagicMock()
@@ -358,6 +358,7 @@ class TestPostExecutionMemory:
 
     def test_post_execution_auto_memory_and_stale_invalidation(self, mock_llm_and_chain, tmp_path):
         from unittest.mock import MagicMock
+
         from agent.executor import ExecutorOutput, FileChange, StepExecutionResult
         from agent.planner import Plan, PlanStep
 
@@ -374,23 +375,32 @@ class TestPostExecutionMemory:
         sem_mem.lifecycle.add_or_update_memory(old_mem)
 
         # Mock planner and executor
-        mock_plan = Plan(steps=[
-            PlanStep(
-                id=1,
-                task="Update main route",
-                target_files=["api/main.py"],
-                target_function="app",
-                new_logic="Add metrics route",
-                expected_output="Route added",
-                acceptance_criteria="200 OK",
-            )
-        ])
+        mock_plan = Plan(
+            steps=[
+                PlanStep(
+                    id=1,
+                    task="Update main route",
+                    target_files=["api/main.py"],
+                    target_function="app",
+                    new_logic="Add metrics route",
+                    expected_output="Route added",
+                    acceptance_criteria="200 OK",
+                )
+            ]
+        )
         chain.planner.plan = MagicMock(return_value=mock_plan)
 
-        file_change = FileChange(filename="api/main.py", updated_content="app = FastAPI()", reason="Added route")
+        file_change = FileChange(
+            filename="api/main.py", updated_content="app = FastAPI()", reason="Added route"
+        )
         mock_execution = ExecutorOutput(
             results=[
-                StepExecutionResult(step_id=1, step_task="Update main route", tool_name="code_parser", file_changes=[file_change])
+                StepExecutionResult(
+                    step_id=1,
+                    step_task="Update main route",
+                    tool_name="code_parser",
+                    file_changes=[file_change],
+                )
             ],
             all_file_changes=[file_change],
         )
@@ -412,8 +422,3 @@ class TestPostExecutionMemory:
         assert len(active_mems) == 1
         assert active_mems[0].category == MemoryCategory.CHANGE_HISTORY
         assert "api/main.py" in active_mems[0].file_paths
-
-
-
-
-

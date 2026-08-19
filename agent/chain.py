@@ -88,7 +88,9 @@ class AgentChain:
             ChainResult containing the session id, original instruction,
             the generated Plan, and the full ExecutorOutput.
         """
-        return self.run_with_project_map(session_id=session_id, instruction=instruction, repo_id=repo_id)
+        return self.run_with_project_map(
+            session_id=session_id, instruction=instruction, repo_id=repo_id
+        )
 
     def run_with_project_map(
         self,
@@ -182,7 +184,9 @@ class AgentChain:
             impact_report=impact_report,
         )
 
-    def record_pr_memory(self, repo_id: str, pr_title: str, pr_url: str, file_paths: list[str] | None = None) -> None:
+    def record_pr_memory(
+        self, repo_id: str, pr_title: str, pr_url: str, file_paths: list[str] | None = None
+    ) -> None:
         """Record PR decision into repository persistent semantic memory."""
         paths = file_paths or []
         self.semantic_memory.add_memory(

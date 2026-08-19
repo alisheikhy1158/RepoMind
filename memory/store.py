@@ -13,10 +13,8 @@ from __future__ import annotations
 
 import json
 import math
-import os
 import re
 from pathlib import Path
-from typing import Any
 
 from memory.models import RepositoryMemory
 
@@ -25,7 +23,7 @@ def cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
     """Compute cosine similarity between two float vectors."""
     if not vec_a or not vec_b or len(vec_a) != len(vec_b):
         return 0.0
-    dot = sum(a * b for a, b in zip(vec_a, vec_b))
+    dot = sum(a * b for a, b in zip(vec_a, vec_b, strict=False))
     norm_a = math.sqrt(sum(a * a for a in vec_a))
     norm_b = math.sqrt(sum(b * b for b in vec_b))
     if norm_a == 0.0 or norm_b == 0.0:
@@ -97,7 +95,7 @@ class PersistentVectorStore:
         memories: dict[str, RepositoryMemory] = {}
         if file_path.exists():
             try:
-                with open(file_path, "r", encoding="utf-8") as f:
+                with open(file_path, encoding="utf-8") as f:
                     data = json.load(f)
                     for item in data.get("memories", []):
                         mem = RepositoryMemory.from_dict(item)

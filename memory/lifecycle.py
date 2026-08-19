@@ -10,7 +10,6 @@ Memory Lifecycle Management for RepoMind:
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from memory.models import RepositoryMemory
 from memory.store import PersistentVectorStore, cosine_similarity
@@ -95,7 +94,9 @@ class MemoryLifecycleManager:
                 mem.is_stale = True
                 self.store.update(mem)
                 invalidated_count += 1
-                logger.info(f"Invalidated stale memory {mem.id} for repo {repo_id} due to file changes in {mem.file_paths}")
+                logger.info(
+                    f"Invalidated stale memory {mem.id} for repo {repo_id} due to file changes in {mem.file_paths}"
+                )
 
         return invalidated_count
 

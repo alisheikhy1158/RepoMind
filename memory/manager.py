@@ -118,7 +118,9 @@ class SemanticMemoryManager:
                 current_tokens += entry_tokens
                 retained_count += 1
             else:
-                logger.info(f"Trimmed semantic memory prompt context at {current_tokens}/{max_tokens} tokens.")
+                logger.info(
+                    f"Trimmed semantic memory prompt context at {current_tokens}/{max_tokens} tokens."
+                )
                 break
 
         lines.append(footer)

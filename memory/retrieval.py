@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any
 
 from memory.models import MemoryCategory, RepositoryMemory
 from memory.store import PersistentVectorStore, cosine_similarity
@@ -53,8 +52,14 @@ class SemanticRetriever:
                 for c in context.categories
             }
             memories = [
-                m for m in memories
-                if (m.category.value if isinstance(m.category, MemoryCategory) else str(m.category).lower()) in valid_cats
+                m
+                for m in memories
+                if (
+                    m.category.value
+                    if isinstance(m.category, MemoryCategory)
+                    else str(m.category).lower()
+                )
+                in valid_cats
             ]
 
         if not memories:
@@ -103,14 +108,11 @@ class SemanticRetriever:
 
             # Composite final score calculation
             final_score = (
-                0.50 * vec_score +
-                0.25 * file_score +
-                0.15 * symbol_score +
-                0.10 * meta_score
+                0.50 * vec_score + 0.25 * file_score + 0.15 * symbol_score + 0.10 * meta_score
             )
 
             if final_score >= context.min_score:
                 scored.append((mem, round(final_score, 4)))
 
         scored.sort(key=lambda x: x[1], reverse=True)
-        return scored[:context.top_k]
+        return scored[: context.top_k]

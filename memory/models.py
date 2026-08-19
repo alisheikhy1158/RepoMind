@@ -15,11 +15,11 @@ from __future__ import annotations
 import time
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Any
 
 
-class MemoryCategory(str, Enum):
+class MemoryCategory(StrEnum):
     ARCHITECTURE = "architecture"
     CONVENTION = "convention"
     DECISION = "decision"
@@ -70,7 +70,9 @@ class RepositoryMemory:
         return {
             "id": self.id,
             "repo_id": self.repo_id,
-            "category": self.category.value if isinstance(self.category, Enum) else str(self.category),
+            "category": (
+                self.category.value if isinstance(self.category, Enum) else str(self.category)
+            ),
             "content": self.content,
             "summary": self.summary,
             "file_paths": self.file_paths,
@@ -106,7 +108,11 @@ class RepositoryMemory:
 
     def to_context_string(self) -> str:
         """Format memory into a concise string representation for LLM prompts."""
-        category_str = self.category.value.upper() if isinstance(self.category, Enum) else str(self.category).upper()
+        category_str = (
+            self.category.value.upper()
+            if isinstance(self.category, Enum)
+            else str(self.category).upper()
+        )
         files_str = f" [Files: {', '.join(self.file_paths)}]" if self.file_paths else ""
         symbols_str = f" [Symbols: {', '.join(self.symbols)}]" if self.symbols else ""
         return f"[{category_str}] {self.summary}{files_str}{symbols_str}\nDetails: {self.content}"
