@@ -12,6 +12,7 @@ from agent.memory import MemoryManager
 from agent.planner import Plan, TaskPlanner
 from agent.plugin import PluginManager
 from agent.plugin import plugin_manager as default_plugin_manager
+from memory.manager import SemanticMemoryManager
 from prompts.system_prompt import SYSTEM_PROMPT
 from tools.code_parser import analyze_plan_impact
 from utils.logging import get_logger
@@ -50,10 +51,12 @@ class AgentChain:
         tools: list[ToolSpec],
         memory: MemoryManager | None = None,
         plugin_mgr: PluginManager | None = None,
+        semantic_memory: SemanticMemoryManager | None = None,
     ) -> None:
         self.llm = llm
         self.memory = memory or MemoryManager()
         self.plugin_manager = plugin_mgr or default_plugin_manager
+        self.semantic_memory = semantic_memory or SemanticMemoryManager()
 
         # Merge base tools with custom plugin tools
         plugin_tools = self.plugin_manager.get_all_tools() if self.plugin_manager else []
@@ -72,25 +75,27 @@ class AgentChain:
 
     # ── Public API ───────────────────────────────────────────────────────────
 
-    def run(self, session_id: str, instruction: str) -> ChainResult:
+    def run(self, session_id: str, instruction: str, repo_id: str = "default_repo") -> ChainResult:
         """
         Execute one full agent turn: plan → execute → persist → summarise.
 
         Args:
             session_id: Unique identifier for this job / conversation session.
             instruction: The user's plain-English change request.
+            repo_id: Repository scope identifier for persistent semantic memory.
 
         Returns:
             ChainResult containing the session id, original instruction,
             the generated Plan, and the full ExecutorOutput.
         """
-        return self.run_with_project_map(session_id=session_id, instruction=instruction)
+        return self.run_with_project_map(session_id=session_id, instruction=instruction, repo_id=repo_id)
 
     def run_with_project_map(
         self,
         session_id: str,
         instruction: str,
         project_map: dict[str, Any] | None = None,
+        repo_id: str = "default_repo",
     ) -> ChainResult:
         """Execute one full agent turn while supplying structured repository intelligence."""
         chain_start_time = time.perf_counter()
@@ -99,6 +104,7 @@ class AgentChain:
             extra={
                 "event": "chain_start",
                 "session_id": session_id,
+                "repo_id": repo_id,
                 "instruction": instruction,
             },
         )
@@ -107,10 +113,24 @@ class AgentChain:
         raw_context = self.memory.get_context_messages(session_id)
         context_with_system = self._build_context(raw_context)
 
+        # Retrieve relevant persistent semantic memories
+        file_paths = list((project_map or {}).get("files", {}).keys()) if project_map else []
+        relevant_memories = self.semantic_memory.retrieve_relevant(
+            repo_id=repo_id,
+            instruction=instruction,
+            file_paths=file_paths,
+            top_k=5,
+        )
+        formatted_semantic_memories = self.semantic_memory.format_memories_for_prompt(
+            relevant_memories,
+            max_tokens=1500,
+        )
+
         plan = self.planner.plan(
             instruction=instruction,
             context_messages=context_with_system,
             project_map=project_map,
+            semantic_memory=formatted_semantic_memories,
         )
         files_by_path = (project_map or {}).get("files", {})
         impact_report = analyze_plan_impact(plan.steps, files_by_path)
@@ -125,6 +145,19 @@ class AgentChain:
         summary = self._build_summary(plan, execution)
         self.memory.append_ai_message(session_id, summary)
 
+        # Auto-update repository persistent semantic memory after successful execution
+        changed_files = [c.filename for c in execution.all_file_changes]
+        if changed_files:
+            self.semantic_memory.invalidate_file_memories(repo_id=repo_id, file_paths=changed_files)
+            self.semantic_memory.add_memory(
+                repo_id=repo_id,
+                category="change_history",
+                content=f"Instruction: '{instruction}'\nModified files: {', '.join(changed_files)}\nExecution Summary:\n{summary}",
+                summary=f"Change: {instruction[:100]}",
+                file_paths=changed_files,
+                metadata={"session_id": session_id, "planned_steps": len(plan.steps)},
+            )
+
         chain_duration_sec = time.perf_counter() - chain_start_time
         metrics_collector.record_duration("chain_duration_seconds", chain_duration_sec)
 
@@ -133,6 +166,7 @@ class AgentChain:
             extra={
                 "event": "chain_complete",
                 "session_id": session_id,
+                "repo_id": repo_id,
                 "planned_steps": len(plan.steps),
                 "executed_steps": len(execution.results),
                 "total_file_changes": len(execution.all_file_changes),
@@ -146,6 +180,18 @@ class AgentChain:
             plan=plan,
             execution=execution,
             impact_report=impact_report,
+        )
+
+    def record_pr_memory(self, repo_id: str, pr_title: str, pr_url: str, file_paths: list[str] | None = None) -> None:
+        """Record PR decision into repository persistent semantic memory."""
+        paths = file_paths or []
+        self.semantic_memory.add_memory(
+            repo_id=repo_id,
+            category="decision",
+            content=f"Created PR '{pr_title}' ({pr_url}) affecting files: {', '.join(paths)}.",
+            summary=f"PR: {pr_title}",
+            file_paths=paths,
+            metadata={"pr_url": pr_url, "pr_title": pr_title},
         )
 
     # ── Private helpers ──────────────────────────────────────────────────────
