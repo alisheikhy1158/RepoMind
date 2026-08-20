@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     app_env: str = "development"
     log_level: str = "INFO"
 
+    # ── Semantic Memory ──────────────────────────────────────────────────────
+    memory_storage_dir: str = ".repomind_memory"
+    memory_dedup_threshold: float = 0.85
+
     # ── Plugins ───────────────────────────────────────────────────────────────
     plugins_dir: str = "plugins"
     enabled_plugins: list[str] = []

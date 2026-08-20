@@ -36,7 +36,7 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["api", "agent", "config", "prompts", "tools"]
+packages = ["api", "agent", "config", "prompts", "tools", "memory"]
 
 [tool.black]
 line-length = 100

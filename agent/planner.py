@@ -135,6 +135,7 @@ class TaskPlanner:
                     (
                         "Conversation context (most recent {max_context_msgs} messages):\n{context}\n\n"
                         "Repository intelligence:\n{project_map}\n\n"
+                        "Persistent Repository Memory:\n{semantic_memory}\n\n"
                         "User instruction:\n{instruction}\n\n"
                         "Return a plan with 1-based step ids. Maximum {max_steps} steps."
                     ),
@@ -167,13 +168,16 @@ class TaskPlanner:
         instruction: str,
         context_messages: list,
         project_map: dict[str, Any] | None = None,
+        semantic_memory: str | None = None,
     ) -> Plan:
         """
-        Produce a Plan from the user's instruction and session context.
+        Produce a Plan from the user's instruction, session context, and semantic memory.
 
         Args:
             instruction: The user's plain-English change request.
             context_messages: LangChain BaseMessage list from MemoryManager.
+            project_map: Optional structured project map.
+            semantic_memory: Formatted persistent repository semantic memory context.
 
         Returns:
             A Plan with at most MAX_PLAN_STEPS steps, each fully specified.
@@ -185,6 +189,7 @@ class TaskPlanner:
                 "event": "planner_start",
                 "instruction_len": len(instruction),
                 "has_project_map": project_map is not None,
+                "has_semantic_memory": bool(semantic_memory),
                 "context_msg_count": len(context_messages),
             },
         )
@@ -194,6 +199,7 @@ class TaskPlanner:
                 "instruction": instruction,
                 "context": self._context_to_text(context_messages),
                 "project_map": self._project_map_to_text(project_map),
+                "semantic_memory": semantic_memory or "(no persistent memory available)",
                 "max_steps": MAX_PLAN_STEPS,
                 "max_context_msgs": 12,
             }
