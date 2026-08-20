@@ -13,6 +13,7 @@ from agent.planner import Plan, TaskPlanner
 from agent.plugin import PluginManager
 from agent.plugin import plugin_manager as default_plugin_manager
 from prompts.system_prompt import SYSTEM_PROMPT
+from tools.code_graph import CodeGraph
 from tools.code_parser import analyze_plan_impact
 from utils.logging import get_logger
 from utils.metrics import metrics_collector
@@ -91,6 +92,7 @@ class AgentChain:
         session_id: str,
         instruction: str,
         project_map: dict[str, Any] | None = None,
+        code_graph: CodeGraph | None = None,
     ) -> ChainResult:
         """Execute one full agent turn while supplying structured repository intelligence."""
         chain_start_time = time.perf_counter()
@@ -111,6 +113,7 @@ class AgentChain:
             instruction=instruction,
             context_messages=context_with_system,
             project_map=project_map,
+            code_graph=code_graph,
         )
         files_by_path = (project_map or {}).get("files", {})
         impact_report = analyze_plan_impact(plan.steps, files_by_path)

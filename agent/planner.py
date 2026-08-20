@@ -8,6 +8,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import Runnable
 from pydantic import BaseModel, Field, field_validator
 
+from tools.code_graph import CodeGraph, summarize_code_graph
 from tools.code_parser import summarize_project_map
 from utils.logging import get_logger
 from utils.metrics import metrics_collector
@@ -135,6 +136,7 @@ class TaskPlanner:
                     (
                         "Conversation context (most recent {max_context_msgs} messages):\n{context}\n\n"
                         "Repository intelligence:\n{project_map}\n\n"
+                        "Code structure graph (functions, classes, call/inheritance relationships):\n{code_graph}\n\n"
                         "User instruction:\n{instruction}\n\n"
                         "Return a plan with 1-based step ids. Maximum {max_steps} steps."
                     ),
@@ -158,6 +160,12 @@ class TaskPlanner:
             return "(no project map available)"
         return summarize_project_map(project_map)
 
+    def _code_graph_to_text(self, code_graph: CodeGraph | None) -> str:
+        """Serialize the code knowledge graph for the planner prompt."""
+        if code_graph is None:
+            return "(no code graph available)"
+        return summarize_code_graph(code_graph)
+
     def build_chain(self) -> Runnable:
         """Return the LangChain runnable for planning."""
         return self.prompt | self.llm.with_structured_output(Plan)
@@ -167,6 +175,7 @@ class TaskPlanner:
         instruction: str,
         context_messages: list,
         project_map: dict[str, Any] | None = None,
+        code_graph: CodeGraph | None = None,
     ) -> Plan:
         """
         Produce a Plan from the user's instruction and session context.
@@ -185,6 +194,7 @@ class TaskPlanner:
                 "event": "planner_start",
                 "instruction_len": len(instruction),
                 "has_project_map": project_map is not None,
+                "has_code_graph": code_graph is not None,
                 "context_msg_count": len(context_messages),
             },
         )
@@ -194,6 +204,7 @@ class TaskPlanner:
                 "instruction": instruction,
                 "context": self._context_to_text(context_messages),
                 "project_map": self._project_map_to_text(project_map),
+                "code_graph": self._code_graph_to_text(code_graph),
                 "max_steps": MAX_PLAN_STEPS,
                 "max_context_msgs": 12,
             }

@@ -29,7 +29,13 @@ from agent.executor import ToolSpec
 from agent.memory import MemoryManager
 from agent.plugin import plugin_manager
 from config.settings import get_settings
-from tools.code_parser import build_project_map, get_project_readme, parse_repository
+from tools.code_graph import CodeGraph, build_code_graph, update_file_in_graph
+from tools.code_parser import (
+    build_project_map,
+    get_project_readme,
+    parse_repository,
+    parse_repository_full,
+)
 from tools.diff_generator import generate_repo_diff
 from tools.github_tool import (
     clone_repository,
@@ -47,7 +53,12 @@ logger = get_logger("tools.agent_runner")
 _memory = MemoryManager()
 
 
-def _build_tools(repo_path: Path, repo_files: dict[str, str], llm_api_key: str) -> list[ToolSpec]:
+def _build_tools(
+    repo_path: Path,
+    repo_files: dict[str, str],
+    llm_api_key: str,
+    code_graph: CodeGraph | None = None,
+) -> list[ToolSpec]:
     """Build the ToolSpec list that the executor will choose from."""
 
     def code_editor(inputs: dict) -> dict:
@@ -160,6 +171,10 @@ def _build_tools(repo_path: Path, repo_files: dict[str, str], llm_api_key: str) 
             target = repo_path / filename
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(updated_content, encoding="utf-8")
+
+            if code_graph is not None and change_filename.endswith(".py"):
+                update_file_in_graph(code_graph, change_filename, updated_content, repo_files)
+                repo_files[change_filename] = updated_content
 
             logger.info(
                 "code_editor: wrote %s (%d bytes)",
@@ -317,6 +332,20 @@ def run_agent(
         repo_files_for_agent = project_map["files"]
         repo_files_before = repo_files_for_agent.copy()
 
+        # 2b. Build the structural code knowledge graph (functions, classes,
+        # calls, inheritance, imports). Uses parse_repository_full — unlike
+        # project_map, the graph needs complete repo coverage, not a
+        # token-budgeted subset, so impact/traversal queries stay accurate.
+        logger.info("Building code knowledge graph")
+        job_manager.add_event(
+            job_id=session_id,
+            stage="graph_building",
+            message="Building code knowledge graph (functions, classes, relationships)...",
+            progress=35.0,
+        )
+        full_repo_files = parse_repository_full(repo_path)
+        code_graph = build_code_graph(full_repo_files)
+
         # 3. Discover and register plugins
         if settings.plugins_dir:
             plugin_manager.discover_plugins(settings.plugins_dir)
@@ -337,7 +366,7 @@ def run_agent(
             ),  # already rotated/resolved by resolve_llm_credentials()
             temperature=0,
         )
-        tools = _build_tools(repo_path, repo_files_for_agent, resolved_llm_key)
+        tools = _build_tools(repo_path, repo_files_for_agent, resolved_llm_key, code_graph)
 
         # 4. Run AgentChain
         logger.info("Running AgentChain for session %s", session_id)
@@ -352,6 +381,7 @@ def run_agent(
             session_id=session_id,
             instruction=instruction,
             project_map=project_map,
+            code_graph=code_graph,
         )
 
         if not result.execution.all_file_changes and not readme_generated:
