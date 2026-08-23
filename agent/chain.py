@@ -144,6 +144,9 @@ class AgentChain:
         for result in execution.results:
             self.memory.mark_step_completed(session_id, result.step_task)
 
+        # Autonomous Test Generation
+        self._generate_autonomous_tests(execution)
+
         summary = self._build_summary(plan, execution)
         self.memory.append_ai_message(session_id, summary)
 
@@ -197,6 +200,43 @@ class AgentChain:
             file_paths=paths,
             metadata={"pr_url": pr_url, "pr_title": pr_title},
         )
+
+    def _generate_autonomous_tests(self, execution: ExecutorOutput) -> None:
+        """Analyze code changes, infer missing behavioral coverage, generate and refine tests autonomously."""
+        if not execution.all_file_changes:
+            return
+
+        try:
+            from agent.coverage_analyzer import BehavioralCoverageAnalyzer
+            from agent.test_generator import AutonomousTestGenerator
+            from agent.test_implementer import TestImplementer
+            from agent.test_refiner import AutonomousTestRefiner
+            from tools.diff_analyzer import analyze_diffs
+            from tools.test_coverage_locator import TestCoverageLocator
+
+            summary = analyze_diffs(execution.all_file_changes)
+            locator = TestCoverageLocator()
+            analyzer = BehavioralCoverageAnalyzer()
+            generator = AutonomousTestGenerator(llm=self.llm)
+            implementer = TestImplementer()
+            refiner = AutonomousTestRefiner()
+
+            for src_file in summary.modified_files:
+                cov = locator.get_coverage(src_file, summary.modified_symbols)
+                cov_map = {src_file: cov}
+                missing_reqs = analyzer.infer_missing_requirements(summary, cov_map)
+
+                if missing_reqs and cov.associated_test_file:
+                    suite_spec = generator.generate_spec(
+                        target_file=src_file,
+                        test_file=cov.associated_test_file,
+                        source_code="",
+                        requirements=missing_reqs,
+                    )
+                    test_code = implementer.render_suite(suite_spec)
+                    refiner.refine_and_run(cov.associated_test_file, test_code, max_attempts=2)
+        except Exception as e:
+            logger.warning(f"Autonomous test generation encountered non-fatal warning: {e}")
 
     # ── Private helpers ──────────────────────────────────────────────────────
 
