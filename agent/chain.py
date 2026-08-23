@@ -7,8 +7,6 @@ from typing import Any
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import SystemMessage
 
-import logging
-
 from agent.executor import ExecutorOutput, StepExecutor, ToolSpec
 from agent.memory import MemoryManager
 from agent.planner import Plan, TaskPlanner
