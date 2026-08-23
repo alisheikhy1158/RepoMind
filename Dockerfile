@@ -4,7 +4,7 @@ WORKDIR /app
 
 COPY . .
 
-RUN pip install --no-cache-dir fastapi uvicorn pydantic pydantic-settings python-dotenv langchain langchain-openai langchain-community langchain-core gitpython PyGithub httpx pytest pytest-asyncio
+RUN pip install --no-cache-dir fastapi uvicorn pydantic pydantic-settings python-dotenv langchain langchain-groq langchain-community langchain-core gitpython PyGithub httpx pytest pytest-asyncio
 
 EXPOSE 8000
 

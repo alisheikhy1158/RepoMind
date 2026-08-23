@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue?logo=python)](https://www.python.org/)
 [![LangChain](https://img.shields.io/badge/LangChain-0.2%2B-green)](https://langchain.com/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111%2B-teal?logo=fastapi)](https://fastapi.tiangolo.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
 [![CI](https://img.shields.io/github/actions/workflow/status/your-org/repomind/ci.yml?label=CI)](/.github/workflows/)
 
 ---
@@ -28,20 +28,20 @@ RepoMind lives as a **separate, independently deployable ML service**. It is int
 
 ## Where RepoMind fits in the bigger picture
 
-```
+```text
 ┌─────────────────────────────────────────────────┐
 │              HackingTheRepo (Web Platform)       │
 │  User → describes change → selects repo → done  │
 │                                                 │
-│   Frontend (React/Next.js)                      │
-│         │                                       │
-│   Backend (Node / Django / etc.)                │
-│         │                                       │
-│         │  POST /run   (REST API call)           │
-│         ▼                                       │
+│  Frontend (React/Next.js)                       │
+│        │                                        │
+│  Backend (Node / Django / etc.)                 │
+│        │                                        │
+│        │  POST /run   (REST API call)           │
+│        ▼                                        │
 │  ┌─────────────────────────────────┐            │
 │  │        RepoMind  (this repo)    │            │
-│  │   FastAPI · LangChain · GitHub  │            │
+│  │  FastAPI · LangChain · GitHub   │            │
 │  └─────────────────────────────────┘            │
 │         │                                       │
 │         ▼                                       │
@@ -236,6 +236,20 @@ Send a follow-up instruction on an existing job to iterate on the same PR.
 }
 ```
 
+### `GET /metrics`
+
+Return live system execution metrics snapshot (jobs, tool calls, step retries, durations, failures). See [MONITORING.md](docs/MONITORING.md) for complete monitoring documentation.
+
+**Response:**
+
+```json
+{
+  "jobs": {"total": 12, "completed": 10, "failed": 1},
+  "tools": {"total_calls": 25, "by_tool": {"code_editor": 25}},
+  "durations": {"planner_duration_seconds": {"avg_seconds": 1.54}}
+}
+```
+
 ---
 
 ## How the Agent Works
@@ -324,4 +338,7 @@ Please follow [Conventional Commits](https://www.conventionalcommits.org/) for c
 
 ## License
 
-[MIT](LICENSE) © HackingTheRepo Team
+This software is licensed under the [HackingTheRepo Proprietary Software License Agreement (PPSLA v1.0)](LICENSE).
+
+Copyright © 2025 QuantumLogics Incorporated. All Rights Reserved. Unauthorized use, reproduction, modification, or distribution is strictly prohibited.
+

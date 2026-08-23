@@ -13,12 +13,19 @@ New in this version:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
-from git import Repo, GitCommandError
+from git import GitCommandError, Repo
 
 if TYPE_CHECKING:
     from agent.executor import FileChange
+
+
+def _redact_secret(text: str, secret: str | None) -> str:
+    """Replace any occurrence of a secret value with a placeholder."""
+    if not secret:
+        return text
+    return text.replace(secret, "***REDACTED***")
 
 
 def clone_repository(repo_url: str, local_path: str | Path) -> Repo:
@@ -34,11 +41,26 @@ def clone_repository(repo_url: str, local_path: str | Path) -> Repo:
 
     Raises:
         ValueError: If local_path already exists and is non-empty.
+        RuntimeError: On clone failure, with any embedded token redacted.
     """
     path = Path(local_path)
     if path.exists() and any(path.iterdir()):
         raise ValueError(f"Target path already exists and is not empty: {path}")
-    return Repo.clone_from(repo_url, str(path))
+
+    # If the URL has an embedded token (https://<token>@github.com/...),
+    # extract it so we can redact it from any error message below.
+    embedded_token = None
+    if "@" in repo_url and "://" in repo_url:
+        scheme_sep = repo_url.split("://", 1)
+        if len(scheme_sep) == 2 and "@" in scheme_sep[1]:
+            credential_part = scheme_sep[1].split("@", 1)[0]
+            embedded_token = credential_part or None
+
+    try:
+        return Repo.clone_from(repo_url, str(path))
+    except GitCommandError as exc:
+        safe_message = _redact_secret(str(exc), embedded_token)
+        raise RuntimeError(f"Failed to clone repository: {safe_message}") from None
 
 
 def open_repository(local_path: str | Path) -> Repo:
@@ -81,7 +103,7 @@ def stage_all_changes(repo: Repo) -> None:
 
 def write_file_changes(
     repo_path: Path,
-    file_changes: list["FileChange"],
+    file_changes: list[FileChange],
 ) -> list[str]:
     """
     Write a list of FileChange objects to the local clone on disk.
@@ -125,8 +147,8 @@ def format_commit_message(message: str, commit_type: str = "feat") -> str:
 def commit_changes(
     repo: Repo,
     message: str,
-    commit_type: Optional[str] = None,
-) -> Optional[str]:
+    commit_type: str | None = None,
+) -> str | None:
     """
     Stage all changes and commit them.
 
@@ -153,7 +175,7 @@ def commit_changes(
 def push_branch(
     repo: Repo,
     remote_name: str = "origin",
-    branch_name: Optional[str] = None,
+    branch_name: str | None = None,
 ) -> None:
     """
     Push the current (or specified) branch to the remote.
@@ -176,5 +198,16 @@ def push_branch(
     except GitCommandError as exc:
         error_text = str(exc).lower()
         if any(kw in error_text for kw in ("authentication", "permission", "403", "401")):
-            raise RuntimeError("GitHub authentication failed. Check your GITHUB_TOKEN.") from exc
-        raise RuntimeError(f"Failed to push branch '{current_branch}': {exc}") from exc
+            raise RuntimeError("GitHub authentication failed. Check your GitHub token.") from None
+        # Redact any URL-embedded token before it reaches logs or job records.
+        remote_url = ""
+        try:
+            remote_url = repo.remote(remote_name).url
+        except Exception:
+            pass
+        embedded_token = None
+        if "@" in remote_url and "://" in remote_url:
+            credential_part = remote_url.split("://", 1)[1].split("@", 1)[0]
+            embedded_token = credential_part or None
+        safe_message = _redact_secret(str(exc), embedded_token)
+        raise RuntimeError(f"Failed to push branch '{current_branch}': {safe_message}") from None

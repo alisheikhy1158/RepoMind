@@ -15,7 +15,7 @@ dependencies = [
     "pydantic-settings>=2.4.0",
     "langchain>=0.2.16",
     "langchain-core>=0.2.38",
-    "langchain-openai>=0.1.23",
+    "langchain-groq>=0.1.0",
     "langchain-community>=0.2.16",
     "openai>=1.45.0",
     "PyGithub>=2.3.0",
@@ -36,13 +36,25 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["api", "agent", "config", "prompts", "tools"]
+packages = ["api", "agent", "config", "prompts", "tools", "memory"]
 
 [tool.black]
 line-length = 100
+target-version = ["py311"]
+extend-exclude = """
+/(
+  website
+  | repomind\\.egg-info
+)/
+"""
 
 [tool.ruff]
 line-length = 100
+exclude = ["website", "repomind.egg-info", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
