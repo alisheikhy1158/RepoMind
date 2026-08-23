@@ -41,7 +41,7 @@ class BehaviorChangeSummary:
 
 def _extract_ast_symbols(code: str) -> dict[str, dict[str, Any]]:
     """Extract top-level and class functions with their arg names using AST."""
-    symbols = {}
+    symbols: dict[str, dict[str, Any]] = {}
     if not code or not code.strip():
         return symbols
 
