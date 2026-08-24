@@ -14,6 +14,7 @@ from agent.plugin import PluginManager
 from agent.plugin import plugin_manager as default_plugin_manager
 from memory.manager import SemanticMemoryManager
 from prompts.system_prompt import SYSTEM_PROMPT
+from tools.code_graph import CodeGraph
 from tools.code_parser import analyze_plan_impact
 from utils.logging import get_logger
 from utils.metrics import metrics_collector
@@ -97,6 +98,7 @@ class AgentChain:
         session_id: str,
         instruction: str,
         project_map: dict[str, Any] | None = None,
+        code_graph: CodeGraph | None = None,
         repo_id: str = "default_repo",
     ) -> ChainResult:
         """Execute one full agent turn while supplying structured repository intelligence."""
@@ -132,6 +134,7 @@ class AgentChain:
             instruction=instruction,
             context_messages=context_with_system,
             project_map=project_map,
+            code_graph=code_graph,
             semantic_memory=formatted_semantic_memories,
         )
         files_by_path = (project_map or {}).get("files", {})
