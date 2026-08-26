@@ -238,7 +238,7 @@ class TestLifecycle:
         mem2 = RepositoryMemory(
             repo_id=repo_id,
             category=MemoryCategory.ARCHITECTURE,
-            content="RepoMind pipeline executes plan then step executor with tools.",
+            content="RepoMind pipeline executes plan then step executor.",
             file_paths=["agent/executor.py"],
             symbols=["StepExecutor"],
         )
