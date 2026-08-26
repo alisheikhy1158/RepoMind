@@ -14,9 +14,18 @@ from agent.plugin import PluginManager
 from agent.plugin import plugin_manager as default_plugin_manager
 from memory.manager import SemanticMemoryManager
 from prompts.system_prompt import SYSTEM_PROMPT
+from retrieval import (
+    CodeChunker,
+    CodeReranker,
+    CodeVectorStore,
+    HybridCodeRetriever,
+    SearchQuery,
+    SemanticContextBuilder,
+)
 from tools.code_parser import analyze_plan_impact
 from utils.logging import get_logger
 from utils.metrics import metrics_collector
+
 
 logger = get_logger("agent.chain")
 
@@ -128,12 +137,32 @@ class AgentChain:
             max_tokens=1500,
         )
 
+        # Hybrid Semantic Code Search Engine
+        formatted_code_context = ""
+        files_by_path = (project_map or {}).get("files", {})
+        if files_by_path:
+            chunker = CodeChunker()
+            code_chunks = chunker.chunk_repository(files_by_path)
+            code_store = CodeVectorStore()
+            code_store.index_chunks(repo_id, code_chunks)
+
+            retriever = HybridCodeRetriever(code_store)
+            reranker = CodeReranker()
+            context_builder = SemanticContextBuilder(max_tokens=6000)
+
+            candidates = retriever.search(repo_id, SearchQuery(query=instruction, top_k=15))
+            reranked = reranker.rerank(instruction, candidates, top_k=8)
+            retrieved_ctx = context_builder.build_context(reranked)
+            formatted_code_context = retrieved_ctx.formatted_text
+
         plan = self.planner.plan(
             instruction=instruction,
             context_messages=context_with_system,
             project_map=project_map,
             semantic_memory=formatted_semantic_memories,
+            retrieved_code_context=formatted_code_context,
         )
+
         files_by_path = (project_map or {}).get("files", {})
         impact_report = analyze_plan_impact(plan.steps, files_by_path)
         self.memory.set_plan(session_id, [s.task for s in plan.steps])
