@@ -605,6 +605,24 @@ def parse_repository(
     return project_map if structured else project_map["files"]
 
 
+def parse_repository_full(
+    repo_path: str | Path,
+    allowed_extensions: set[str] | None = None,
+    ignored_dirs: set[str] | None = None,
+) -> dict[str, str]:
+    """
+    Parse every matching file in the repository with no token budget applied.
+
+    """
+    project_map = build_project_map(
+        repo_path=repo_path,
+        allowed_extensions=allowed_extensions,
+        ignored_dirs=ignored_dirs,
+        max_tokens=10**12,  # effectively unlimited
+    )
+    return project_map["files"]
+
+
 def list_repository_files(
     repo_path: str | Path,
     allowed_extensions: set[str] | None = None,

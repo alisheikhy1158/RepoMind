@@ -22,6 +22,8 @@ from retrieval import (
     SearchQuery,
     SemanticContextBuilder,
 )
+from tools.code_graph import CodeGraph
+
 from tools.code_parser import analyze_plan_impact
 from utils.logging import get_logger
 from utils.metrics import metrics_collector
@@ -106,6 +108,7 @@ class AgentChain:
         session_id: str,
         instruction: str,
         project_map: dict[str, Any] | None = None,
+        code_graph: CodeGraph | None = None,
         repo_id: str = "default_repo",
     ) -> ChainResult:
         """Execute one full agent turn while supplying structured repository intelligence."""
@@ -159,6 +162,7 @@ class AgentChain:
             instruction=instruction,
             context_messages=context_with_system,
             project_map=project_map,
+            code_graph=code_graph,
             semantic_memory=formatted_semantic_memories,
             retrieved_code_context=formatted_code_context,
         )
