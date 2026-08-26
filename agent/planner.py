@@ -138,7 +138,6 @@ class TaskPlanner:
                         "Repository intelligence:\n{project_map}\n\n"
                         "Code structure graph (functions, classes, call/inheritance relationships):\n{code_graph}\n\n"
                         "Retrieved Semantic Code Context:\n{retrieved_code_context}\n\n"
-
                         "Persistent Repository Memory:\n{semantic_memory}\n\n"
                         "User instruction:\n{instruction}\n\n"
                         "Return a plan with 1-based step ids. Maximum {max_steps} steps."
@@ -146,7 +145,6 @@ class TaskPlanner:
                 ),
             ]
         )
-
 
     def _context_to_text(self, context_messages: list) -> str:
         """Serialize LangChain messages to readable text for the prompt."""

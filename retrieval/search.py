@@ -7,10 +7,7 @@ Combines dense vector similarity, lexical BM25/token overlap, and structural rel
 
 from __future__ import annotations
 
-import math
-import re
 from dataclasses import dataclass, field
-from typing import Any
 
 from retrieval.chunker import CodeChunk
 from retrieval.embeddings import split_identifier
@@ -39,7 +36,9 @@ class BM25Scorer:
         self.k1 = k1
         self.b = b
 
-    def compute_score(self, query_tokens: list[str], chunk_tokens: list[str], avg_len: float) -> float:
+    def compute_score(
+        self, query_tokens: list[str], chunk_tokens: list[str], avg_len: float
+    ) -> float:
         if not query_tokens or not chunk_tokens:
             return 0.0
 
@@ -101,9 +100,7 @@ class HybridCodeRetriever:
 
         # 2. Lexical Scores
         query_tokens = split_identifier(sq.query)
-        avg_chunk_len = (
-            sum(len(split_identifier(c.content)) for c in chunks) / max(1, len(chunks))
-        )
+        avg_chunk_len = sum(len(split_identifier(c.content)) for c in chunks) / max(1, len(chunks))
 
         target_file_set = {f.lower().replace("\\", "/") for f in sq.target_files}
         target_symbol_set = {s.lower() for s in sq.target_symbols}

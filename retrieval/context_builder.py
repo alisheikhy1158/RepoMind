@@ -68,10 +68,16 @@ class SemanticContextBuilder:
 
             if current_tokens + block_tokens > budget:
                 # If block is too large, check if we can truncate content
-                remaining_budget = budget - current_tokens - _estimate_tokens(block_header + f"```{lang_label}\n... [Truncated]\n```\n")
+                remaining_budget = (
+                    budget
+                    - current_tokens
+                    - _estimate_tokens(block_header + f"```{lang_label}\n... [Truncated]\n```\n")
+                )
                 if remaining_budget > 100:
                     max_chars = remaining_budget * 4
-                    truncated_content = chunk.content[:max_chars] + "\n... [Truncated due to token limit]"
+                    truncated_content = (
+                        chunk.content[:max_chars] + "\n... [Truncated due to token limit]"
+                    )
                     code_fence = f"```{lang_label}\n{truncated_content}\n```\n"
                     full_block = block_header + code_fence
                     block_tokens = _estimate_tokens(full_block)

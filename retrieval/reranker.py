@@ -34,11 +34,19 @@ class CodeReranker:
     def detect_intent(self, query: str) -> str:
         """Infer query intent: 'test', 'config', 'implementation', or 'general'."""
         q_lower = query.lower()
-        if any(term in q_lower for term in ("test", "unit test", "fixture", "assert", "mock", "pytest")):
+        if any(
+            term in q_lower for term in ("test", "unit test", "fixture", "assert", "mock", "pytest")
+        ):
             return "test"
-        if any(term in q_lower for term in ("config", "setting", "environment", "toml", "json", "yaml", "env")):
+        if any(
+            term in q_lower
+            for term in ("config", "setting", "environment", "toml", "json", "yaml", "env")
+        ):
             return "config"
-        if any(term in q_lower for term in ("class", "function", "implement", "method", "logic", "parser")):
+        if any(
+            term in q_lower
+            for term in ("class", "function", "implement", "method", "logic", "parser")
+        ):
             return "implementation"
         return "general"
 
@@ -81,7 +89,6 @@ class CodeReranker:
 
             rescored.append((chunk, round(score, 4)))
 
-
         # Sort by updated score descending
         rescored.sort(key=lambda x: x[1], reverse=True)
 
@@ -92,8 +99,10 @@ class CodeReranker:
             for existing_chunk, _ in filtered:
                 if chunk.file_path == existing_chunk.file_path:
                     overlap = _line_overlap_ratio(
-                        chunk.start_line, chunk.end_line,
-                        existing_chunk.start_line, existing_chunk.end_line,
+                        chunk.start_line,
+                        chunk.end_line,
+                        existing_chunk.start_line,
+                        existing_chunk.end_line,
                     )
                     if overlap >= self.overlap_threshold:
                         duplicate = True

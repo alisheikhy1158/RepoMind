@@ -140,8 +140,9 @@ class CodeChunker:
         # 1. Module Overview Chunk
         docstring = ast.get_docstring(tree) or ""
         header_lines: list[str] = []
-        for i, line in enumerate(lines[:30], 1):
+        for _i, line in enumerate(lines[:30], 1):
             if line.strip().startswith(("import ", "from ", "#", '"""', "'''")):
+
                 header_lines.append(line)
             elif not line.strip():
                 continue

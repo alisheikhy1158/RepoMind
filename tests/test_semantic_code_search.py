@@ -4,6 +4,7 @@ Unit tests and benchmarks for Objective 20: Semantic Code Search.
 """
 
 import pytest
+
 from retrieval.chunker import CodeChunk, CodeChunker
 
 
@@ -45,7 +46,9 @@ def standalone_func(x: int) -> int:
 
     def test_chunk_json_config(self):
         chunker = CodeChunker()
-        json_code = '{\n  "app": {\n    "name": "RepoMind"\n  },\n  "database": {\n    "port": 5432\n  }\n}'
+        json_code = (
+            '{\n  "app": {\n    "name": "RepoMind"\n  },\n  "database": {\n    "port": 5432\n  }\n}'
+        )
         chunks = chunker.chunk_file("config.json", json_code)
         assert len(chunks) == 2
         unit_names = {c.unit_name for c in chunks}
@@ -165,7 +168,10 @@ class PaymentGateway:
         results = retriever.search(repo_id, query)
         assert len(results) >= 1
         top_chunk, score = results[0]
-        assert top_chunk.unit_name in {"UserAuthenticationService", "UserAuthenticationService.login_user"}
+        assert top_chunk.unit_name in {
+            "UserAuthenticationService",
+            "UserAuthenticationService.login_user",
+        }
         assert score > 0.3
 
 
@@ -259,7 +265,8 @@ class TestPlannerExecutorRetrievalIntegration:
 
     def test_planner_accepts_retrieved_code_context(self):
         from unittest.mock import MagicMock
-        from agent.planner import TaskPlanner, Plan, PlanStep
+
+        from agent.planner import Plan, PlanStep, TaskPlanner
 
         mock_llm = MagicMock()
         mock_plan = Plan(
@@ -322,7 +329,9 @@ class TestRetrievalBenchmarks:
         store, repo_id = indexed_repo
         retriever = HybridCodeRetriever(store)
 
-        results = retriever.search(repo_id, SearchQuery(query="Find persistent vector store memory search", top_k=3))
+        results = retriever.search(
+            repo_id, SearchQuery(query="Find persistent vector store memory search", top_k=3)
+        )
         assert len(results) >= 1
         top_files = [c.file_path for c, _ in results]
         assert "memory/store.py" in top_files
@@ -333,7 +342,9 @@ class TestRetrievalBenchmarks:
         store, repo_id = indexed_repo
         retriever = HybridCodeRetriever(store)
 
-        results = retriever.search(repo_id, SearchQuery(query="Where is TaskPlanner instructions plan generated?", top_k=3))
+        results = retriever.search(
+            repo_id, SearchQuery(query="Where is TaskPlanner instructions plan generated?", top_k=3)
+        )
         assert len(results) >= 1
         top_files = [c.file_path for c, _ in results]
         assert "agent/planner.py" in top_files
@@ -344,13 +355,9 @@ class TestRetrievalBenchmarks:
         store, repo_id = indexed_repo
         retriever = HybridCodeRetriever(store)
 
-        results = retriever.search(repo_id, SearchQuery(query="Locate code chunker Python AST parsing", top_k=3))
+        results = retriever.search(
+            repo_id, SearchQuery(query="Locate code chunker Python AST parsing", top_k=3)
+        )
         assert len(results) >= 1
         top_files = [c.file_path for c, _ in results]
         assert "retrieval/chunker.py" in top_files
-
-
-
-
-
-

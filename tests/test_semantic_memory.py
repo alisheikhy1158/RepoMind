@@ -244,7 +244,6 @@ class TestLifecycle:
         )
         saved_2, created_2 = lifecycle.add_or_update_memory(mem2)
 
-
         assert created_2 is False
         assert saved_2.id == saved_1.id
         assert saved_2.version == 2

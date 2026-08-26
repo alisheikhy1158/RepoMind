@@ -23,11 +23,9 @@ from retrieval import (
     SemanticContextBuilder,
 )
 from tools.code_graph import CodeGraph
-
 from tools.code_parser import analyze_plan_impact
 from utils.logging import get_logger
 from utils.metrics import metrics_collector
-
 
 logger = get_logger("agent.chain")
 
