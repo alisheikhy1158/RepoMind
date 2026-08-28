@@ -272,7 +272,7 @@ class StepExecutor:
                     },
                 )
                 metrics_collector.record_tool_execution(candidate.name, outcome="permission_denied")
-                candidate_name = candidate.fallback_tool_name
+                candidate_name = candidate.fallback_tool_name or ""
                 continue
 
             precondition_result = candidate.precondition(step, repo_context)
@@ -289,7 +289,7 @@ class StepExecutor:
                 metrics_collector.record_tool_execution(
                     candidate.name, outcome="precondition_failed"
                 )
-                candidate_name = candidate.fallback_tool_name
+                candidate_name = candidate.fallback_tool_name or ""
                 continue
 
             # Found a usable tool.
