@@ -25,6 +25,7 @@ class MetricsCollector:
         self._job_counters: dict[str, int] = defaultdict(int)
         self._tool_counters: dict[str, int] = defaultdict(int)
         self._tool_outcome_counters: dict[str, int] = defaultdict(int)
+        self._tool_selection_counters: dict[str, int] = defaultdict(int)
         self._http_request_counters: dict[str, int] = defaultdict(int)
         self._failure_counters: dict[str, int] = defaultdict(int)
         self._durations: dict[str, list[float]] = defaultdict(list)
@@ -63,6 +64,31 @@ class MetricsCollector:
             logger.debug(
                 "Tool execution metric recorded",
                 extra={"event": "metric_tool_exec", "tool_name": tool_name, "outcome": outcome},
+            )
+
+    def record_tool_selection(
+        self, original_tool_name: str, resolved_tool_name: str, used_fallback: bool
+    ) -> None:
+        """
+        Record whether the planner/executor's first tool choice was usable,
+        or whether a fallback tool had to be substituted — the basis for
+        selection-accuracy metrics (goal: measure tool-selection accuracy
+        and unnecessary tool usage).
+        """
+        with self._lock:
+            self._tool_selection_counters["total"] += 1
+            if used_fallback:
+                self._tool_selection_counters["fallback_used"] += 1
+            else:
+                self._tool_selection_counters["first_choice_accepted"] += 1
+            logger.debug(
+                "Tool selection metric recorded",
+                extra={
+                    "event": "metric_tool_selection",
+                    "original_tool_name": original_tool_name,
+                    "resolved_tool_name": resolved_tool_name,
+                    "used_fallback": used_fallback,
+                },
             )
 
     def record_plan_generated(self, step_count: int) -> None:
@@ -146,6 +172,7 @@ class MetricsCollector:
                     "total_calls": sum(self._tool_counters.values()),
                     "by_tool": dict(self._tool_counters),
                     "by_outcome": dict(self._tool_outcome_counters),
+                    "selection_accuracy": self._compute_selection_accuracy(),
                 },
                 "plans": {
                     "total_plans": self._total_plans,
@@ -161,12 +188,30 @@ class MetricsCollector:
                 "durations": duration_stats,
             }
 
+    def _compute_selection_accuracy(self) -> dict[str, Any]:
+        """Derive a human-readable selection-accuracy summary from raw counters.
+
+        Must be called while holding self._lock (only called from within
+        get_metrics_summary, which already holds it).
+        """
+        total = self._tool_selection_counters["total"]
+        first_choice = self._tool_selection_counters["first_choice_accepted"]
+        fallback = self._tool_selection_counters["fallback_used"]
+        accuracy_pct = round((first_choice / total) * 100, 1) if total else None
+        return {
+            "total_selections": total,
+            "first_choice_accepted": first_choice,
+            "fallback_used": fallback,
+            "first_choice_accuracy_pct": accuracy_pct,
+        }
+
     def reset(self) -> None:
         """Reset all metrics to initial state."""
         with self._lock:
             self._job_counters.clear()
             self._tool_counters.clear()
             self._tool_outcome_counters.clear()
+            self._tool_selection_counters.clear()
             self._http_request_counters.clear()
             self._failure_counters.clear()
             self._durations.clear()

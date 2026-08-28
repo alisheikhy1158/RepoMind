@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -60,11 +60,53 @@ class ToolDecision(BaseModel):
     )
 
 
+PreconditionFn = Callable[["PlanStep", dict[str, Any]], "PreconditionResult"]
+
+
+@dataclass
+class PreconditionResult:
+    """Outcome of checking whether a tool is safe/valid to use for a given step."""
+
+    ok: bool
+    reason: str = ""  # populated when ok is False, explaining why
+
+
+def _default_precondition(step: PlanStep, repo_context: dict[str, Any]) -> PreconditionResult:
+    """Default precondition: always passes.
+
+    Not every tool needs target_files populated on the step (some tools take
+    their target via tool_input instead). Tools that DO need file-state
+    guarantees should supply their own stricter precondition — see
+    tools.agent_runner's code_editor_precondition for an example that
+    requires target_files and validates paths stay within the repo root.
+    """
+    return PreconditionResult(ok=True)
+
+
 @dataclass
 class ToolSpec:
     name: str
     description: str
     fn: ToolFn
+    capabilities: list[str] = field(default_factory=list)
+    """Short machine-readable tags describing what this tool can do,
+    e.g. ['edit_file', 'create_file']. Used for dynamic selection filtering
+    and for rendering structured metadata into the tool-selection prompt."""
+
+    precondition: PreconditionFn = _default_precondition
+    """Callable(step, repo_context) -> PreconditionResult. Checked before
+    the tool is actually invoked; repo_context is a dict the caller controls
+    (e.g. {'files_by_path': {...}, 'code_graph': ...}) so tools needing real
+    repo state (e.g. 'does this file exist') and tools needing only step
+    fields (e.g. 'target_files must be non-empty') both fit the same shape."""
+
+    requires_permission: bool = False
+    """If True, this tool can only run when explicitly allowed — see
+    StepExecutor's allowed_tool_names constructor argument."""
+
+    fallback_tool_name: str | None = None
+    """If this tool's precondition fails or it raises during execution,
+    the executor will try this tool name next, if registered."""
 
 
 class StepExecutor:
@@ -78,10 +120,19 @@ class StepExecutor:
       has enough context to generate real, working code changes.
     """
 
-    def __init__(self, llm: BaseChatModel, tools: list[ToolSpec]) -> None:
+    def __init__(
+        self,
+        llm: BaseChatModel,
+        tools: list[ToolSpec],
+        allowed_tool_names: set[str] | None = None,
+    ) -> None:
         self.llm = llm
         self.tools_by_name = {t.name: t for t in tools}
         self.memory_context: list | None = None
+        # If None, every tool is allowed (backward-compatible default).
+        # If a set is given, only tools NOT flagged requires_permission=True,
+        # or tools explicitly named in this set, may run.
+        self.allowed_tool_names = allowed_tool_names
 
         tool_descriptions = (
             "\n".join([f"- {t.name}: {t.description}" for t in tools]) or "- noop: do nothing"
@@ -185,6 +236,81 @@ class StepExecutor:
             return decision
         return ToolDecision.model_validate(decision)
 
+    def _select_and_validate_tool(
+        self, decision: ToolDecision, step: PlanStep, repo_context: dict[str, Any]
+    ) -> tuple[ToolSpec | None, str, str]:
+        """
+        Resolve the LLM's tool choice into an actually-usable ToolSpec,
+        applying precondition checks, permission constraints, and falling
+        back to a configured fallback tool when the first choice is invalid.
+
+        Returns:
+            (tool, resolved_tool_name, rejection_reason). tool is None if no
+            usable tool could be found; rejection_reason explains why the
+            original (and any fallback) choice was rejected, empty on success.
+        """
+        candidate_name = decision.tool_name
+        visited: set[str] = set()
+
+        while candidate_name and candidate_name not in visited:
+            visited.add(candidate_name)
+            candidate = self.tools_by_name.get(candidate_name)
+
+            if candidate is None:
+                return None, candidate_name, f"Tool '{candidate_name}' not found in registry."
+
+            if candidate.requires_permission and (
+                self.allowed_tool_names is not None
+                and candidate.name not in self.allowed_tool_names
+            ):
+                logger.warning(
+                    f"Tool '{candidate.name}' requires permission but is not in allowed_tool_names.",
+                    extra={
+                        "event": "tool_permission_denied",
+                        "tool_name": candidate.name,
+                        "step_id": step.id,
+                    },
+                )
+                metrics_collector.record_tool_execution(candidate.name, outcome="permission_denied")
+                candidate_name = candidate.fallback_tool_name
+                continue
+
+            precondition_result = candidate.precondition(step, repo_context)
+            if not precondition_result.ok:
+                logger.warning(
+                    f"Tool '{candidate.name}' precondition failed: {precondition_result.reason}",
+                    extra={
+                        "event": "tool_precondition_failed",
+                        "tool_name": candidate.name,
+                        "step_id": step.id,
+                        "reason": precondition_result.reason,
+                    },
+                )
+                metrics_collector.record_tool_execution(
+                    candidate.name, outcome="precondition_failed"
+                )
+                candidate_name = candidate.fallback_tool_name
+                continue
+
+            # Found a usable tool.
+            if candidate.name != decision.tool_name:
+                logger.info(
+                    f"Fell back to tool '{candidate.name}' after '{decision.tool_name}' was rejected.",
+                    extra={
+                        "event": "tool_fallback_used",
+                        "original_tool_name": decision.tool_name,
+                        "fallback_tool_name": candidate.name,
+                        "step_id": step.id,
+                    },
+                )
+            return candidate, candidate.name, ""
+
+        return (
+            None,
+            decision.tool_name,
+            f"No usable tool found for step {step.id} (original choice and any fallbacks were rejected).",
+        )
+
     def _run_tool(self, tool: ToolSpec, tool_input: dict[str, Any]) -> dict:
         """Call a tool function and return its payload dict."""
         return tool.fn(tool_input) or {}
@@ -269,16 +395,18 @@ class StepExecutor:
                 tool_input=decision.tool_input,
             )
 
-            tool = self.tools_by_name.get(decision.tool_name)
+            repo_context = getattr(self, "repo_context", {}) or {}
+            tool, resolved_tool_name, rejection_reason = self._select_and_validate_tool(
+                decision, step, repo_context
+            )
             if tool is None:
                 step_result.notes = (
-                    f"Tool '{decision.tool_name}' not found in registry; step skipped. "
-                    f"Available tools: {list(self.tools_by_name.keys())}"
+                    f"{rejection_reason} Available tools: {list(self.tools_by_name.keys())}"
                 )
                 logger.warning(
                     f"Step {step.id} skipped: {step_result.notes}",
                     extra={
-                        "event": "tool_not_found",
+                        "event": "tool_selection_failed",
                         "step_id": step.id,
                         "tool_name": decision.tool_name,
                     },
@@ -286,6 +414,15 @@ class StepExecutor:
                 metrics_collector.record_tool_execution(decision.tool_name, outcome="not_found")
                 results.append(step_result)
                 continue
+
+            # Reflect the actually-used tool (may differ from the LLM's
+            # original choice if a fallback was used) in the step result.
+            step_result.tool_name = resolved_tool_name
+            metrics_collector.record_tool_selection(
+                original_tool_name=decision.tool_name,
+                resolved_tool_name=resolved_tool_name,
+                used_fallback=resolved_tool_name != decision.tool_name,
+            )
 
             # ── 2. First attempt ─────────────────────────────────────────────
             payload = self._run_tool(tool, decision.tool_input)

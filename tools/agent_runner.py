@@ -196,6 +196,23 @@ def _build_tools(
         )
         return {"file_changes": applied, "notes": notes}
 
+    def code_editor_precondition(step, repo_context):
+        """code_editor needs at least one target file, and — if repo state is
+        available — every target file must be a real path under the repo
+        (not an attempt to escape it via '..').
+        """
+        from agent.executor import PreconditionResult
+
+        if not step.target_files:
+            return PreconditionResult(ok=False, reason="Step has no target_files specified.")
+        for target_file in step.target_files:
+            if ".." in target_file.replace("\\", "/").split("/"):
+                return PreconditionResult(
+                    ok=False,
+                    reason=f"target_file '{target_file}' attempts to escape the repo root.",
+                )
+        return PreconditionResult(ok=True)
+
     return [
         ToolSpec(
             name="code_editor",
@@ -207,6 +224,8 @@ def _build_tools(
                 "file content), and 'reason' (one-sentence explanation)."
             ),
             fn=code_editor,
+            capabilities=["edit_file", "create_file"],
+            precondition=code_editor_precondition,
         )
     ]
 
